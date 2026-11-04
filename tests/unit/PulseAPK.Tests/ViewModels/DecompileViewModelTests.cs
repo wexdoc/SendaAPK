@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -12,23 +13,28 @@ namespace PulseAPK.Tests.ViewModels;
 public class DecompileViewModelTests
 {
     [Fact]
-    public void RunCommand_CanExecute_WithoutApkPathOrApktoolPath()
+    public void RunCommand_IsDisabled_WithoutAnApk()
     {
         var viewModel = CreateViewModel(apktoolPath: string.Empty);
 
-        Assert.True(viewModel.RunDecompileCommand.CanExecute(null));
+        Assert.False(viewModel.RunDecompileCommand.CanExecute(null));
     }
 
     [Fact]
-    public void RunCommand_CanExecute_OnlyDependsOnIsRunning()
+    public void RunCommand_IsDisabledWhileRunning()
     {
         var viewModel = CreateViewModel(apktoolPath: string.Empty);
-
-        viewModel.IsRunning = true;
-        Assert.False(viewModel.RunDecompileCommand.CanExecute(null));
-
-        viewModel.IsRunning = false;
-        Assert.True(viewModel.RunDecompileCommand.CanExecute(null));
+        var apkPath = Path.GetTempFileName();
+        try
+        {
+            viewModel.ApkPath = apkPath;
+            Assert.True(viewModel.RunDecompileCommand.CanExecute(null));
+            viewModel.IsRunning = true;
+            Assert.False(viewModel.RunDecompileCommand.CanExecute(null));
+            viewModel.IsRunning = false;
+            Assert.True(viewModel.RunDecompileCommand.CanExecute(null));
+        }
+        finally { File.Delete(apkPath); }
     }
 
     [Fact]
@@ -36,11 +42,15 @@ public class DecompileViewModelTests
     {
         var dialogService = new TestDialogService();
         var viewModel = CreateViewModel(apktoolPath: string.Empty, dialogService: dialogService);
-
-        await viewModel.RunDecompileCommand.ExecuteAsync(null);
-
-        Assert.True(viewModel.RunDecompileCommand.CanExecute(null));
-        Assert.Contains(dialogService.Warnings, warning => warning.message.Contains("apktool", StringComparison.OrdinalIgnoreCase));
+        var apkPath = Path.GetTempFileName();
+        try
+        {
+            viewModel.ApkPath = apkPath;
+            await viewModel.RunDecompileCommand.ExecuteAsync(null);
+            Assert.True(viewModel.RunDecompileCommand.CanExecute(null));
+            Assert.Contains(dialogService.Warnings, warning => warning.message.Contains("apktool", StringComparison.OrdinalIgnoreCase));
+        }
+        finally { File.Delete(apkPath); }
     }
 
 

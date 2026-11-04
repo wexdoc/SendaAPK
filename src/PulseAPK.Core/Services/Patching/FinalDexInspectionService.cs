@@ -1,5 +1,5 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using System.IO.Compression;
-using System.Reflection;
 using System.Text.RegularExpressions;
 using AlphaOmega.Debug;
 using AlphaOmega.Debug.Dex;
@@ -181,12 +181,12 @@ public sealed class FinalDexInspectionService : IFinalDexInspectionService
         using var stream = new MemoryStream(dexData, writable: false);
         using var streamLoader = new StreamLoader(stream);
         using var dexFile = new DexFile(streamLoader);
-        var stringItems = GetObjectArray(dexFile, "StringIdItems")
-            ?? throw new InvalidDataException("Dex string pool is missing.");
-
-        return stringItems.Any(item =>
-            GetStringMember(item, "StringData", "Value", "Data", "Text") is { } stringData &&
-            stringData.Contains(markerLiteral, StringComparison.Ordinal));
+        foreach (var item in dexFile.STRING_ID_ITEM)
+        {
+            var value = dexFile.STRING_DATA_ITEM.GetRowByOffset(item.string_data_off).data;
+            if (value.Contains(markerLiteral, StringComparison.Ordinal)) return true;
+        }
+        return false;
     }
 
     private static bool ContainsStringInRawDexBytes(byte[] dexData, string markerLiteral)
@@ -198,52 +198,6 @@ public sealed class FinalDexInspectionService : IFinalDexInspectionService
 
         var markerBytes = System.Text.Encoding.UTF8.GetBytes(markerLiteral);
         return markerBytes.Length > 0 && dexData.AsSpan().IndexOf(markerBytes) >= 0;
-    }
-
-    private static object[]? GetObjectArray(object source, string memberName)
-    {
-        var value = GetMemberValue(source, memberName);
-        return value switch
-        {
-            null => null,
-            object[] array => array,
-            System.Collections.IEnumerable enumerable => enumerable.Cast<object>().ToArray(),
-            _ => throw new InvalidDataException($"Member '{memberName}' is not enumerable.")
-        };
-    }
-
-    private static string? GetStringMember(object source, params string[] candidates)
-    {
-        foreach (var candidate in candidates)
-        {
-            var value = GetMemberValue(source, candidate);
-            if (value is string stringValue)
-            {
-                return stringValue;
-            }
-        }
-
-        return null;
-    }
-
-    private static object? GetMemberValue(object source, string name)
-    {
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-
-        var type = source.GetType();
-        var property = type.GetProperty(name, flags);
-        if (property is not null)
-        {
-            return property.GetValue(source);
-        }
-
-        var field = type.GetField(name, flags);
-        if (field is not null)
-        {
-            return field.GetValue(source);
-        }
-
-        return null;
     }
 
     private static bool TryParseMethodReference(string methodReference, out string classDescriptor, out string methodName, out string signature)

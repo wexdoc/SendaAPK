@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using System.IO.Compression;
 using PulseAPK.Core.Abstractions.Patching;
 using PulseAPK.Core.Services.Patching;
@@ -131,7 +132,7 @@ public sealed class FinalDexInspectionServiceTests
         var (found, diagnostics) = await service.ContainsStringMarkerAsync(apkPath, "/dev/pulseapk-fake-root-");
 
         Assert.False(found);
-        Assert.Contains("not found in any of the 2 dex entries", diagnostics);
+        Assert.True(diagnostics.Contains("not found in any of the 2 dex entries"), diagnostics);
         Assert.DoesNotContain("warning", diagnostics, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -249,7 +250,10 @@ public sealed class FinalDexInspectionServiceTests
         var stringIdsSize = values.Length;
         var stringIdsByteCount = stringIdsSize * 4;
         var stringDataOffset = stringIdsOffset + stringIdsByteCount;
-        var totalSize = stringDataOffset + stringDatas.Sum(static data => data.Length);
+        var stringsEnd = stringDataOffset + stringDatas.Sum(static data => data.Length);
+        var mapOffset = (stringsEnd + 3) & ~3;
+        const int mapEntries = 4;
+        var totalSize = mapOffset + 4 + (mapEntries * 12);
 
         var buffer = new byte[totalSize];
         var magic = System.Text.Encoding.ASCII.GetBytes("dex\n035\0");
@@ -257,8 +261,11 @@ public sealed class FinalDexInspectionServiceTests
         WriteInt32(buffer, 0x20, totalSize);
         WriteInt32(buffer, 0x24, headerSize);
         WriteInt32(buffer, 0x28, 0x12345678);
+        WriteInt32(buffer, 0x34, mapOffset);
         WriteInt32(buffer, 0x38, stringIdsSize);
         WriteInt32(buffer, 0x3C, stringIdsOffset);
+        WriteInt32(buffer, 0x68, totalSize - stringDataOffset);
+        WriteInt32(buffer, 0x6C, stringDataOffset);
 
         var cursor = stringDataOffset;
         for (var i = 0; i < stringDatas.Length; i++)
@@ -269,6 +276,18 @@ public sealed class FinalDexInspectionServiceTests
             cursor += data.Length;
         }
 
+        WriteInt32(buffer, mapOffset, mapEntries);
+        void WriteMapEntry(int index, ushort type, int count, int offset)
+        {
+            var entry = mapOffset + 4 + (index * 12);
+            BitConverter.GetBytes(type).CopyTo(buffer, entry);
+            WriteInt32(buffer, entry + 4, count);
+            WriteInt32(buffer, entry + 8, offset);
+        }
+        WriteMapEntry(0, 0x0000, 1, 0);
+        WriteMapEntry(1, 0x0001, stringIdsSize, stringIdsOffset);
+        WriteMapEntry(2, 0x2002, stringIdsSize, stringDataOffset);
+        WriteMapEntry(3, 0x1000, 1, mapOffset);
         return buffer;
     }
 }

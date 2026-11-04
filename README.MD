@@ -6,7 +6,7 @@ Visita el [sitio web de SendaAPK](https://sendaapk.wexdoc.chatgpt.site/).
 
 **Estado:** el producto no tiene una versión estable. El análisis no instala ni ejecuta el APK. Los permisos, las URL y los indicios del código no demuestran infección; ningún resultado garantiza que el archivo sea seguro. Defender depende de la configuración del sistema y puede no estar disponible en modo privado. La cuarentena no desinfecta el contenido.
 
-En la última comprobación con .NET 10, las 40 pruebas del analizador local pasaron; 19 pruebas de la batería general seguían fallando. Esas cifras son una instantánea, no una garantía de funcionamiento. La verificación de firmas, el análisis ampliado de Ren'Py, la coordinación global de operaciones y la renovación de la interfaz están pendientes.
+En la última comprobación en Windows con .NET 10 pasaron 42 pruebas del analizador local y 111 de la batería general. Esas cifras son una instantánea, no una garantía de funcionamiento. La verificación de firmas, el análisis ampliado de Ren'Py, la coordinación global de operaciones y la renovación de la interfaz están pendientes.
 
 ## Desarrollar
 
@@ -21,9 +21,11 @@ dotnet test tests/unit/PulseAPK.Tests/PulseAPK.Tests.csproj
 
 Algunas funciones avanzadas requieren Java y herramientas externas configuradas por el usuario. Los APK personales, informes, credenciales y binarios de herramientas externas no deben añadirse al repositorio. Se conservan los directorios de datos `PulseAPK` para leer la configuración y los análisis de la instalación anterior.
 
+La cuarentena usa controles de bloqueo e identidad específicos de Windows y, por ahora, solo está disponible en ese sistema. Conserva una copia verificable y permite restaurarla sin sobrescribir un archivo existente; no modifica ni limpia el APK.
+
 ## Sitio y patrocinio
 
-El código del sitio está en `website/`. SendaAPK busca financiación voluntaria para su desarrollo; Patreon aún no está configurado y no hay pagos activos. No se procesan tarjetas en el sitio.
+El código del sitio está en `website/`. SendaAPK busca financiación voluntaria para su desarrollo; el enlace de patrocinio permanece pendiente mientras se verifica la configuración y la disponibilidad de los cobros. No se procesan tarjetas en el sitio.
 
 ## Créditos y licencias
 

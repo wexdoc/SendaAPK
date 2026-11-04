@@ -85,6 +85,33 @@ public sealed class LocalWorkflowTests : IDisposable
         await Assert.ThrowsAsync<IOException>(() => new QuarantineService(Path.Combine(root, "quarantine")).QuarantineAsync(file, hash));
         Assert.True(File.Exists(file));
     }
+    [Fact] public async Task ConcurrentQuarantineAttemptsNeverRemoveUnverifiedFile()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var file = Apk();
+        var hash = await ApkInputService.HashAsync(file);
+        var directory = Path.Combine(root, "quarantine");
+        async Task<bool> TryMove()
+        {
+            try { await new QuarantineService(directory).QuarantineAsync(file, hash); return true; }
+            catch (IOException) { return false; }
+        }
+        var outcomes = await Task.WhenAll(TryMove(), TryMove());
+        Assert.Equal(1, outcomes.Count(success => success));
+        Assert.False(File.Exists(file));
+        var entry = Assert.Single(new QuarantineService(directory).List());
+        Assert.Equal(hash, await ApkInputService.HashAsync(Path.Combine(directory, entry.Id + ".quarantine")));
+    }
+    [Fact] public async Task InvalidMetadataDoesNotHideValidQuarantineEntries()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var file = Apk();
+        var directory = Path.Combine(root, "quarantine");
+        var service = new QuarantineService(directory);
+        var entry = await service.QuarantineAsync(file, await ApkInputService.HashAsync(file));
+        await File.WriteAllTextAsync(Path.Combine(directory, Guid.NewGuid().ToString("N") + ".json"), "{\"Sha256\":null}");
+        Assert.Equal(entry.Id, Assert.Single(service.List()).Id);
+    }
     [Fact] public async Task CancelledCodeAnalysisStops()
     {
         File.WriteAllText(Path.Combine(root, "test.smali"), "const-string v0, \"http://test.invalid\"");

@@ -79,7 +79,9 @@ public sealed class PatchRequestValidatorService
 
         try
         {
-            _ = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(configBytes);
+            var text = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(configBytes);
+            if (text.Contains('\0'))
+                return [$"Config file '{configPath}' must be UTF-8 plain text."];
         }
         catch (DecoderFallbackException)
         {

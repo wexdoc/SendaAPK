@@ -281,8 +281,8 @@ public sealed class PatchPipelineService : IPatchPipelineService
             }
             else if (!request.UseAapt2ForBuild)
             {
-                result.StageSummaries.Add(new PatchStageSummary("build", true, BuildFailureStageMessage("Build attempt 1", initialBuildResult, useAapt2: false)));
-                result.StageSummaries.Add(new PatchStageSummary("build", true, "Build fallback attempt 2 started (useAapt2=true)."));
+                result.Warnings.Add(BuildFailureStageMessage("Build attempt 1", initialBuildResult, useAapt2: false));
+                result.Warnings.Add("Build fallback attempt 2 started (useAapt2=true).");
 
                 var fallbackBuildResult = await _apktoolService.BuildAsync(decompiledDirectory, rebuiltApkPath, useAapt2: true, cancellationToken);
                 if (fallbackBuildResult.ExitCode != 0)

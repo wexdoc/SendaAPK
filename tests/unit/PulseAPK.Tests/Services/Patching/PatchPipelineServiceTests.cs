@@ -345,7 +345,8 @@ public class PatchPipelineServiceTests
         {
             InputApkPath = inputApk,
             OutputApkPath = outputApk,
-            SignOutput = false
+            SignOutput = false,
+            InjectForAllArchitectures = true
         });
 
         Assert.True(result.Success);
@@ -657,7 +658,7 @@ public class PatchPipelineServiceTests
         var error = Assert.Single(result.Errors);
         Assert.DoesNotContain("helper missing in final dex artifact", error, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("verification inconclusive due to dex parse errors", error, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("before tuple search completed", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("before search completed", error, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(result.Warnings, static warning =>
             warning.Contains("parsed dex entries: 0", StringComparison.OrdinalIgnoreCase) &&
             warning.Contains("failed dex entries: 2", StringComparison.OrdinalIgnoreCase));

@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using PulseAPK.Core.Abstractions.Patching;
 
 namespace PulseAPK.Core.Models;
@@ -14,7 +15,7 @@ public sealed record PatchRequest
     public bool UseDelayedLoad { get; init; }
     public string? WorkingDirectory { get; init; }
     public bool KeepIntermediateFiles { get; init; }
-    public bool PreserveOriginalDexFiles { get; init; } = true;
+    public bool PreserveOriginalDexFiles { get; init; }
     public DexPreservationMode DexPreservationMode { get; init; } = DexPreservationMode.Disabled;
     public bool ConfirmDangerousDexReplacement { get; init; }
     public bool EnsureInternetPermission { get; init; } = true;

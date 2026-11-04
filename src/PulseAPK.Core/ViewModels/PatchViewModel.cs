@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PulseAPK.Core.Abstractions;
@@ -114,8 +115,8 @@ public partial class PatchViewModel : ObservableObject
 
         _consoleLog = Properties.Resources.WaitingForCommand;
 
-        SelectedDexPreservationOption = DexPreservationOptions[0];
-        SelectedScriptInjectionOption = ScriptInjectionOptions[0];
+        _selectedDexPreservationOption = DexPreservationOptions[0];
+        _selectedScriptInjectionOption = ScriptInjectionOptions[0];
 
         OutputFolderPath = EnsureCompiledDirectory();
         EnsureUserScriptTemplatesExist();

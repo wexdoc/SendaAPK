@@ -662,7 +662,7 @@ public class SmaliPatchServiceTests
         var result = await service.PatchAsync(root, "com.example.MainActivity", ScriptInjectionProfile.FridaGadget, useDelayedLoad: false);
 
         Assert.False(result.Success);
-        Assert.Equal("Unable to find an injection point in activity smali file.", result.Error);
+        Assert.EndsWith("Unable to find an injection point in activity smali file.", result.Error);
     }
 
     [Fact]

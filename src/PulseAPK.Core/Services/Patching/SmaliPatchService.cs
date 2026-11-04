@@ -7,6 +7,7 @@ namespace PulseAPK.Core.Services.Patching;
 
 public sealed class SmaliPatchService : ISmaliPatchService
 {
+    private const string NewLine = "\n";
     internal const string ActivityInjectionPointFailureWithApplicationPatchPrefix = "Application smali patch applied, but activity patch failed:";
     private const string RootCategory = "root_check";
     private static readonly Regex RootPathLiteralRegex = new(
@@ -40,7 +41,9 @@ public sealed class SmaliPatchService : ISmaliPatchService
             return Task.FromResult<(bool Success, string? Error)>((false, $"Could not locate smali file for activity '{activityName}'."));
         }
 
-        var originalContent = File.ReadAllText(smaliFile);
+        var sourceContent = File.ReadAllText(smaliFile);
+        var lineEnding = sourceContent.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var originalContent = NormalizeLineEndings(sourceContent);
 
         var classDescriptor = ExtractClassDescriptor(originalContent);
         if (string.IsNullOrWhiteSpace(classDescriptor))
@@ -74,24 +77,28 @@ public sealed class SmaliPatchService : ISmaliPatchService
         patched = InjectCallIntoLifecycleMethod(patched, classDescriptor, lifecycleMethodName, lifecycleSignature, superClassDescriptor, profile);
         patched = EnsureHelpersForReferencedCalls(patched, classDescriptor);
 
+        var helperName = profile == ScriptInjectionProfile.SampleInjection ? "logSampleInjectionApplied"
+            : lifecycleMethodName == "onResume" ? "loadFridaGadgetIfNeeded" : "loadFridaGadget";
+        var lifecycle = Regex.Match(patched, $@"(?ms)\.method[^\n]*\b{lifecycleMethodName}{Regex.Escape(lifecycleSignature)}[\s\S]*?\.end method");
+        if (!lifecycle.Success || !lifecycle.Value.Contains($"{classDescriptor}->{helperName}()V", StringComparison.Ordinal))
+        {
+            const string error = "Unable to find an injection point in activity smali file.";
+            return Task.FromResult<(bool Success, string? Error)>((false,
+                profile == ScriptInjectionProfile.SampleInjection ? error : $"{ActivityInjectionPointFailureWithApplicationPatchPrefix} {error}"));
+        }
+
         if (HasMissingStaticHelperForReferencedCalls(patched, classDescriptor))
         {
             return Task.FromResult<(bool Success, string? Error)>((false, "Patched smali references Frida helper methods that are missing static definitions."));
         }
 
-        if (ReferenceEquals(patched, originalContent) || patched == originalContent)
-        {
-            if (profile != ScriptInjectionProfile.SampleInjection)
-            {
-                return Task.FromResult<(bool Success, string? Error)>((false, $"{ActivityInjectionPointFailureWithApplicationPatchPrefix} Unable to find an injection point in activity smali file."));
-            }
-
-            return Task.FromResult<(bool Success, string? Error)>((false, "Unable to find an injection point in activity smali file."));
-        }
-
-        File.WriteAllText(smaliFile, patched);
+        if (!string.Equals(patched, originalContent, StringComparison.Ordinal))
+            File.WriteAllText(smaliFile, patched.Replace("\n", lineEnding, StringComparison.Ordinal));
         return Task.FromResult<(bool Success, string? Error)>((true, null));
     }
+
+    private static string NormalizeLineEndings(string content)
+        => content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 
     private static Task<(bool Success, string? Error)> PatchRootCheckPathsAsync(
         string decompiledDirectory,
@@ -117,7 +124,7 @@ public sealed class SmaliPatchService : ISmaliPatchService
             cancellationToken.ThrowIfCancellationRequested();
 
             var original = File.ReadAllText(file);
-            var lines = original.Split(Environment.NewLine);
+            var lines = original.Split(NewLine);
             var changed = false;
 
             for (var i = 0; i < lines.Length; i++)
@@ -144,7 +151,7 @@ public sealed class SmaliPatchService : ISmaliPatchService
 
             if (changed)
             {
-                File.WriteAllText(file, string.Join(Environment.NewLine, lines));
+                File.WriteAllText(file, string.Join(NewLine, lines));
             }
         }
 
@@ -480,7 +487,7 @@ public sealed class SmaliPatchService : ISmaliPatchService
 
     private static string EnsureHelperMethodIsStatic(string content, string methodName)
     {
-        var methodPattern = new Regex($@"(?m)^(?<indent>\s*)\.method\s+(?<modifiers>[^\n]*?)\b{Regex.Escape(methodName)}\s*\(\s*\)\s*V\s*$");
+        var methodPattern = new Regex($@"(?m)^(?<indent>[ \t]*)\.method[ \t]+(?<modifiers>[^\n]*?)\b{Regex.Escape(methodName)}[ \t]*\([ \t]*\)[ \t]*V[ \t]*$");
         var match = methodPattern.Match(content);
         if (!match.Success)
         {
@@ -500,19 +507,19 @@ public sealed class SmaliPatchService : ISmaliPatchService
 
     private static bool HasStaticHelperMethod(string content, string methodName)
     {
-        var staticMethodPattern = new Regex($@"(?m)^\s*\.method\s+[^\n]*\bstatic\b[^\n]*\b{Regex.Escape(methodName)}\s*\(\s*\)\s*V\s*$");
+        var staticMethodPattern = new Regex($@"(?m)^[ \t]*\.method[ \t]+[^\n]*\bstatic\b[^\n]*\b{Regex.Escape(methodName)}[ \t]*\([ \t]*\)[ \t]*V[ \t]*$");
         return staticMethodPattern.IsMatch(content);
     }
 
     private static string InsertLinesBeforeEndClass(string content, IReadOnlyList<string> lines)
     {
-        var method = string.Join(Environment.NewLine, lines) + Environment.NewLine;
+        var method = string.Join(NewLine, lines) + NewLine;
         var endClassMatch = FindLastEndClassDirective(content);
         if (endClassMatch is null)
         {
-            if (!content.EndsWith(Environment.NewLine, StringComparison.Ordinal))
+            if (!content.EndsWith(NewLine, StringComparison.Ordinal))
             {
-                content += Environment.NewLine;
+                content += NewLine;
             }
 
             return content + method;
@@ -544,23 +551,23 @@ public sealed class SmaliPatchService : ISmaliPatchService
             }
 
             var call = "    invoke-static {}, " + classDescriptor + $"->{helperMethodName}()V";
-            var superCallPattern = new Regex($@"(?m)^(?<indent>\s*)invoke-super \{{[^\n]+\}}, [^\n]+->{methodName}{Regex.Escape(methodSignature)}\s*$");
+            var superCallPattern = new Regex($@"(?m)^(?<indent>[ \t]*)invoke-super \{{[^\n]+\}}, [^\n]+->{methodName}{Regex.Escape(methodSignature)}[ \t]*$");
             var superCallMatch = superCallPattern.Match(body);
             if (superCallMatch.Success)
             {
                 var superCallEndIndex = superCallMatch.Index + superCallMatch.Length;
-                var callLine = Environment.NewLine + superCallMatch.Groups["indent"].Value + call.TrimStart();
+                var callLine = NewLine + superCallMatch.Groups["indent"].Value + call.TrimStart();
                 body = body.Insert(superCallEndIndex, callLine);
             }
             else
             {
-                var split = body.Split(Environment.NewLine);
+                var split = body.Split(NewLine);
                 var insertAt = Array.FindIndex(split, line => line.TrimStart().StartsWith(".locals", StringComparison.Ordinal) || line.TrimStart().StartsWith(".registers", StringComparison.Ordinal));
                 if (insertAt >= 0)
                 {
                     var lines = split.ToList();
                     lines.Insert(insertAt + 1, call);
-                    body = string.Join(Environment.NewLine, lines);
+                    body = string.Join(NewLine, lines);
                 }
                 else
                 {
@@ -572,18 +579,18 @@ public sealed class SmaliPatchService : ISmaliPatchService
         }
 
         var newMethod = methodName == "onResume"
-            ? $".method protected onResume()V{Environment.NewLine}" +
-              "    .locals 0" + Environment.NewLine +
-              $"    invoke-super {{p0}}, {superClassDescriptor}->onResume()V{Environment.NewLine}" +
-              $"    invoke-static {{}}, {classDescriptor}->{helperMethodName}()V{Environment.NewLine}" +
-              "    return-void" + Environment.NewLine +
-              ".end method" + Environment.NewLine + Environment.NewLine
-            : $".method protected onCreate(Landroid/os/Bundle;)V{Environment.NewLine}" +
-              "    .locals 0" + Environment.NewLine +
-              $"    invoke-super {{p0, p1}}, {superClassDescriptor}->onCreate(Landroid/os/Bundle;)V{Environment.NewLine}" +
-              $"    invoke-static {{}}, {classDescriptor}->{helperMethodName}()V{Environment.NewLine}" +
-              "    return-void" + Environment.NewLine +
-              ".end method" + Environment.NewLine + Environment.NewLine;
+            ? $".method protected onResume()V{NewLine}" +
+              "    .locals 0" + NewLine +
+              $"    invoke-super {{p0}}, {superClassDescriptor}->onResume()V{NewLine}" +
+              $"    invoke-static {{}}, {classDescriptor}->{helperMethodName}()V{NewLine}" +
+              "    return-void" + NewLine +
+              ".end method" + NewLine + NewLine
+            : $".method protected onCreate(Landroid/os/Bundle;)V{NewLine}" +
+              "    .locals 0" + NewLine +
+              $"    invoke-super {{p0, p1}}, {superClassDescriptor}->onCreate(Landroid/os/Bundle;)V{NewLine}" +
+              $"    invoke-static {{}}, {classDescriptor}->{helperMethodName}()V{NewLine}" +
+              "    return-void" + NewLine +
+              ".end method" + NewLine + NewLine;
 
         var endClassMatch = FindLastEndClassDirective(content);
         if (endClassMatch is null)
@@ -613,7 +620,9 @@ public sealed class SmaliPatchService : ISmaliPatchService
             return (false, "Unable to resolve Application class for Frida gadget loading.");
         }
 
-        var originalContent = File.Exists(applicationSmaliPath) ? File.ReadAllText(applicationSmaliPath) : BuildDefaultApplicationSmali(applicationDescriptor);
+        var sourceContent = File.Exists(applicationSmaliPath) ? File.ReadAllText(applicationSmaliPath) : BuildDefaultApplicationSmali(applicationDescriptor);
+        var lineEnding = sourceContent.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var originalContent = NormalizeLineEndings(sourceContent);
         var superClass = ExtractSuperClassDescriptor(originalContent) ?? "Landroid/app/Application;";
         var patched = originalContent;
 
@@ -624,7 +633,7 @@ public sealed class SmaliPatchService : ISmaliPatchService
         if (!string.Equals(patched, originalContent, StringComparison.Ordinal))
         {
             Directory.CreateDirectory(Path.GetDirectoryName(applicationSmaliPath)!);
-            File.WriteAllText(applicationSmaliPath, patched);
+            File.WriteAllText(applicationSmaliPath, patched.Replace("\n", lineEnding, StringComparison.Ordinal));
         }
 
         return (true, null);
@@ -696,13 +705,13 @@ public sealed class SmaliPatchService : ISmaliPatchService
     private static string BuildDefaultApplicationSmali(string applicationDescriptor)
     {
         return
-            $".class public {applicationDescriptor}{Environment.NewLine}" +
-            ".super Landroid/app/Application;" + Environment.NewLine + Environment.NewLine +
-            ".method public constructor <init>()V" + Environment.NewLine +
-            "    .locals 0" + Environment.NewLine + Environment.NewLine +
-            "    invoke-direct {p0}, Landroid/app/Application;-><init>()V" + Environment.NewLine + Environment.NewLine +
-            "    return-void" + Environment.NewLine +
-            ".end method" + Environment.NewLine;
+            $".class public {applicationDescriptor}{NewLine}" +
+            ".super Landroid/app/Application;" + NewLine + NewLine +
+            ".method public constructor <init>()V" + NewLine +
+            "    .locals 0" + NewLine + NewLine +
+            "    invoke-direct {p0}, Landroid/app/Application;-><init>()V" + NewLine + NewLine +
+            "    return-void" + NewLine +
+            ".end method" + NewLine;
     }
 
     private static string EnsureApplicationGadgetMembers(string content, string classDescriptor)
@@ -759,7 +768,7 @@ public sealed class SmaliPatchService : ISmaliPatchService
         var methodMatch = Regex.Match(content, @"(?m)^\s*\.method\b");
         if (methodMatch.Success)
         {
-            var fieldBlock = fieldLine + Environment.NewLine + Environment.NewLine;
+            var fieldBlock = fieldLine + NewLine + NewLine;
             return content.Insert(methodMatch.Index, fieldBlock);
         }
 
@@ -803,16 +812,16 @@ public sealed class SmaliPatchService : ISmaliPatchService
             var body = match.Groups[2].Value;
             if (!body.Contains("loadFridaGadgetSafely", StringComparison.Ordinal))
             {
-                var superCallPattern = new Regex($@"(?m)^(?<indent>\s*)invoke-super \{{[^\n]+\}}, [^\n]+->{methodName}{Regex.Escape(methodSignature)}\s*$");
+                var superCallPattern = new Regex($@"(?m)^(?<indent>[ \t]*)invoke-super \{{[^\n]+\}}, [^\n]+->{methodName}{Regex.Escape(methodSignature)}[ \t]*$");
                 var superCallMatch = superCallPattern.Match(body);
                 if (superCallMatch.Success)
                 {
                     var insertIndex = superCallMatch.Index + superCallMatch.Length;
-                    body = body.Insert(insertIndex, Environment.NewLine + helperInvokeLine);
+                    body = body.Insert(insertIndex, NewLine + helperInvokeLine);
                 }
                 else
                 {
-                    body = body.TrimEnd() + Environment.NewLine + "    " + superInvokeLine + Environment.NewLine + helperInvokeLine + Environment.NewLine;
+                    body = body.TrimEnd() + NewLine + "    " + superInvokeLine + NewLine + helperInvokeLine + NewLine;
                 }
             }
 
@@ -820,12 +829,12 @@ public sealed class SmaliPatchService : ISmaliPatchService
         }
 
         var newMethod =
-            $".method protected {methodName}{methodSignature}{Environment.NewLine}" +
-            "    .locals 0" + Environment.NewLine +
-            $"    {superInvokeLine}{Environment.NewLine}" +
-            $"{helperInvokeLine}{Environment.NewLine}" +
-            "    return-void" + Environment.NewLine +
-            ".end method" + Environment.NewLine + Environment.NewLine;
+            $".method protected {methodName}{methodSignature}{NewLine}" +
+            "    .locals 0" + NewLine +
+            $"    {superInvokeLine}{NewLine}" +
+            $"{helperInvokeLine}{NewLine}" +
+            "    return-void" + NewLine +
+            ".end method" + NewLine + NewLine;
         return InsertLinesBeforeEndClass(content, [newMethod]);
     }
 }

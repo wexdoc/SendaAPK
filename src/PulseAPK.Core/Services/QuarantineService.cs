@@ -1,4 +1,8 @@
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+using System.ComponentModel;
 
 namespace PulseAPK.Core.Services;
 
@@ -61,28 +65,30 @@ public sealed class QuarantineService
             Directory.CreateDirectory(root);
             Validate(entry);
             if (!Path.GetExtension(path).Equals(".apk", StringComparison.OrdinalIgnoreCase)) throw new IOException("Solo se aíslan archivos APK.");
-            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new IOException("El APK no puede ser un enlace.");
             await Save(entry);
-            // Copy first on every volume; never remove an original before verifying a durable copy.
-            await using (var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            // Keep a delete-capable handle to this exact file open until the verified copy is durable.
+            await using (var source = OpenLocked(path, createNew: false, writable: false))
             {
-                await using var destination = new FileStream(Data(entry), FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                await source.CopyToAsync(destination);
-                destination.Flush(flushToDisk: true);
+                await using (var destination = new FileStream(Data(entry), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                {
+                    await source.CopyToAsync(destination);
+                    destination.Flush(flushToDisk: true);
+                    destination.Position = 0;
+                    var hash = Convert.ToHexString(await SHA256.HashDataAsync(destination));
+                    source.Position = 0;
+                    var sourceHash = Convert.ToHexString(await SHA256.HashDataAsync(source));
+                    if (!hash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase) || !sourceHash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        entry.State = "Copia sin verificar; original conservado";
+                        await Save(entry);
+                        throw new IOException("La huella cambió. El original se conservó.");
+                    }
+                    entry.State = "Copia verificada; original pendiente de retirar";
+                    await Save(entry);
+                    MarkForDeletion(source.SafeFileHandle);
+                    await source.DisposeAsync();
+                }
             }
-            var hash = await ApkInputService.HashAsync(Data(entry));
-            if (!hash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
-            {
-                entry.State = "Copia sin verificar; original conservado";
-                await Save(entry);
-                throw new IOException("La huella cambió. El original se conservó.");
-            }
-            entry.State = "Copia verificada; original pendiente de retirar";
-            await Save(entry);
-            // Verify source again in case it changed since the previous analysis.
-            if (!(await ApkInputService.HashAsync(path)).Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
-                throw new IOException("El original cambió; no se retirará.");
-            File.Delete(path);
             entry.State = "En cuarentena";
             await Save(entry);
             return entry;
@@ -95,34 +101,78 @@ public sealed class QuarantineService
         try
         {
             Validate(entry);
-            if (!(await ApkInputService.HashAsync(Data(entry))).Equals(entry.Sha256, StringComparison.OrdinalIgnoreCase))
-                throw new IOException("La huella de la cuarentena no coincide. No se restauró.");
             if (!Path.GetExtension(entry.OriginalPath).Equals(".apk", StringComparison.OrdinalIgnoreCase)) throw new IOException("La ruta original no es un APK.");
             if (File.Exists(entry.OriginalPath)) throw new IOException("Ya existe un archivo en la ruta original. No se sobrescribirá.");
             var parent = Path.GetDirectoryName(entry.OriginalPath)!;
             if (!Directory.Exists(parent)) throw new DirectoryNotFoundException("La carpeta original no existe. Vuelve a crearla antes de restaurar.");
-            var copied = false;
+            await using var input = OpenLocked(Data(entry), createNew: false, writable: false);
+            await using var output = OpenLocked(entry.OriginalPath, createNew: true, writable: true);
+            var verified = false;
             try
             {
-                await using (var output = new FileStream(entry.OriginalPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                {
-                    copied = true;
-                    await using var input = File.OpenRead(Data(entry));
-                    await input.CopyToAsync(output);
-                    output.Flush(flushToDisk: true);
-                }
-                if (!(await ApkInputService.HashAsync(entry.OriginalPath)).Equals(entry.Sha256, StringComparison.OrdinalIgnoreCase))
+                await input.CopyToAsync(output);
+                output.Flush(flushToDisk: true);
+                input.Position = 0;
+                output.Position = 0;
+                var inputHash = Convert.ToHexString(await SHA256.HashDataAsync(input));
+                var outputHash = Convert.ToHexString(await SHA256.HashDataAsync(output));
+                if (!inputHash.Equals(entry.Sha256, StringComparison.OrdinalIgnoreCase) || !outputHash.Equals(entry.Sha256, StringComparison.OrdinalIgnoreCase))
                     throw new IOException("No se pudo verificar la restauración.");
+                verified = true;
+                entry.State = "Restaurado; retirada de copia de cuarentena pendiente";
+                await Save(entry);
+                MarkForDeletion(input.SafeFileHandle);
+                await input.DisposeAsync();
             }
             catch
             {
-                if (copied) File.Delete(entry.OriginalPath);
+                if (!verified) MarkForDeletion(output.SafeFileHandle);
                 throw;
             }
             entry.State = "Restaurado";
             await Save(entry);
-            File.Delete(Data(entry));
         }
         finally { gate.Release(); }
     }
+
+    private static FileStream OpenLocked(string path, bool createNew, bool writable)
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("La cuarentena segura está disponible por ahora solo en Windows.");
+        const uint genericRead = 0x80000000, genericWrite = 0x40000000, delete = 0x00010000;
+        const uint shareRead = 1, openExisting = 3, createNewMode = 1, openReparsePoint = 0x00200000;
+        var handle = CreateFileW(path, genericRead | delete | (writable ? genericWrite : 0), shareRead, IntPtr.Zero,
+            createNew ? createNewMode : openExisting, openReparsePoint, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            var error = Marshal.GetLastWin32Error();
+            handle.Dispose();
+            throw new IOException("No se pudo bloquear el archivo de forma segura: " + new Win32Exception(error).Message);
+        }
+        if (!GetFileInformationByHandleEx(handle, 9, out var attributes, (uint)Marshal.SizeOf<FileAttributeTagInfo>()) ||
+            (attributes.FileAttributes & (0x400u | 0x10u)) != 0)
+        {
+            handle.Dispose();
+            throw new IOException("El archivo no se puede verificar o es un enlace.");
+        }
+        return new FileStream(handle, writable ? FileAccess.ReadWrite : FileAccess.Read);
+    }
+
+    private static void MarkForDeletion(SafeFileHandle handle)
+    {
+        byte deleteFile = 1;
+        if (!SetFileInformationByHandle(handle, 4, ref deleteFile, 1))
+            throw new IOException("No se pudo retirar el archivo bloqueado: " + new Win32Exception(Marshal.GetLastWin32Error()).Message);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileAttributeTagInfo { public uint FileAttributes; public uint ReparseTag; }
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int informationClass, out FileAttributeTagInfo information, uint size);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetFileInformationByHandle(SafeFileHandle handle, int informationClass, ref byte information, uint size);
 }
