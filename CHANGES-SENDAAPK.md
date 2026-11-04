@@ -13,10 +13,14 @@ Esta versión modifica la obra original PulseAPK. Conserva LICENSE.md, NOTICE y 
 - `PulseAPK.sln`
 - `README.MD`
 - `src/PulseAPK.Avalonia/App.axaml.cs`
+- `src/PulseAPK.Avalonia/App.axaml`
 - `src/PulseAPK.Avalonia/MainWindow.axaml`
 - `src/PulseAPK.Avalonia/PulseAPK.Avalonia.csproj`
 - `src/PulseAPK.Avalonia/Views/AboutView.axaml`
+- `src/PulseAPK.Avalonia/Views/BuildView.axaml`
 - `src/PulseAPK.Avalonia/Views/DecompileView.axaml`
+- `src/PulseAPK.Avalonia/Views/PatchView.axaml`
+- `src/PulseAPK.Avalonia/Views/SettingsView.axaml`
 - `src/PulseAPK.Core/Properties/Resources.es-ES.resx`
 - `src/PulseAPK.Core/Properties/Resources.resx`
 - `src/PulseAPK.Core/Models/PatchRequest.cs`

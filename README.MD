@@ -6,7 +6,7 @@ Visita el [sitio web de SendaAPK](https://sendaapk.wexdoc.chatgpt.site/).
 
 **Estado:** el producto no tiene una versión estable. El análisis no instala ni ejecuta el APK. Los permisos, las URL y los indicios del código no demuestran infección; ningún resultado garantiza que el archivo sea seguro. Defender depende de la configuración del sistema y puede no estar disponible en modo privado. La cuarentena no desinfecta el contenido.
 
-En la última comprobación en Windows con .NET 10 pasaron 42 pruebas del analizador local y 116 de la batería general. Esas cifras son una instantánea, no una garantía de funcionamiento. La verificación de firmas, el análisis ampliado de Ren'Py, la coordinación global de operaciones y la renovación de la interfaz están pendientes.
+En la última comprobación en Windows con .NET 10 pasaron 42 pruebas del analizador local y 116 de la batería general. Esas cifras son una instantánea, no una garantía de funcionamiento. La verificación de firmas, el análisis ampliado de Ren'Py, la coordinación global de operaciones y parte de la renovación de la interfaz están pendientes.
 
 ## Desarrollar
 

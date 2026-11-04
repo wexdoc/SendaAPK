@@ -2,38 +2,61 @@
  xmlns:vm="clr-namespace:PulseAPK.Core.ViewModels;assembly=PulseAPK.Core"
  xmlns:services="clr-namespace:PulseAPK.Core.Services;assembly=PulseAPK.Core"
  x:Class="PulseAPK.Avalonia.Views.LocalApkView" x:DataType="vm:LocalApkViewModel">
- <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="12" Margin="20">
-  <StackPanel Spacing="5">
-   <TextBlock Text="Analizar APK · Local y privado" Classes="page-title" />
-   <TextBlock Text="Selecciona un archivo. No se instala ni se ejecuta; no se sube a servicios externos." TextWrapping="Wrap" />
-  </StackPanel>
+ <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="14" Margin="20,16">
+  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+   <StackPanel Spacing="4">
+    <TextBlock Text="Analizar APK" Classes="page-title" />
+    <TextBlock Text="Revisa un archivo en tu equipo, sin instalarlo ni ejecutarlo." Classes="helper-text" FontSize="13" />
+   </StackPanel>
+   <Border Grid.Column="1" VerticalAlignment="Center" Background="{DynamicResource CyberAccentMutedBrush}" CornerRadius="12" Padding="10,5">
+    <TextBlock Text="●  ANÁLISIS LOCAL" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource CyberAccentBrush}" />
+   </Border>
+  </Grid>
   <Border Grid.Row="1" Classes="card">
-   <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10">
-    <TextBox Text="{Binding ApkPath}" Watermark="Ruta del archivo .apk" IsEnabled="{Binding !Busy}" VerticalAlignment="Center" />
-    <Button Grid.Column="1" Content="Seleccionar APK" Command="{Binding BrowseCommand}" />
-    <Button Grid.Column="2" Content="Analizar" Command="{Binding AnalyseCommand}" Classes="primary-action" />
-    <Button Grid.Column="3" Content="Cancelar" Command="{Binding CancelCommand}" />
+   <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
+    <StackPanel Spacing="3">
+     <TextBlock Text="Selecciona un APK" FontSize="16" FontWeight="SemiBold" />
+     <TextBlock Text="El archivo permanece en tu equipo durante el análisis." Classes="helper-text" />
+    </StackPanel>
+    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+     <TextBox Text="{Binding ApkPath}" Watermark="Ruta del archivo .apk" IsEnabled="{Binding !Busy}" VerticalAlignment="Center" />
+     <Button Grid.Column="1" Content="Seleccionar archivo" Command="{Binding BrowseCommand}" />
+    </Grid>
+    <WrapPanel Grid.Row="2" Orientation="Horizontal">
+     <Button Content="Iniciar análisis" Command="{Binding AnalyseCommand}" Classes="primary-action" Margin="0,0,8,0" />
+     <Button Content="Cancelar análisis" Command="{Binding CancelCommand}" IsVisible="{Binding Busy}" />
+    </WrapPanel>
    </Grid>
   </Border>
-  <StackPanel Grid.Row="2" Spacing="7">
-   <CheckBox Content="Análisis amplio: incluir bibliotecas (más lento y con más coincidencias legítimas)" IsChecked="{Binding IncludeLibraries}" IsEnabled="{Binding !Busy}" />
-   <ProgressBar IsIndeterminate="True" IsVisible="{Binding Busy}" Height="4" />
-   <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
-   <TextBlock Text="{Binding DefenderSummary}" FontWeight="Bold" TextWrapping="Wrap" />
-   <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
-  </StackPanel>
-  <TabControl Grid.Row="3">
+  <Grid Grid.Row="2" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+   <CheckBox Content="Incluir bibliotecas en el análisis (puede tardar más)" IsChecked="{Binding IncludeLibraries}" IsEnabled="{Binding !Busy}" />
+   <ProgressBar Grid.Row="1" IsIndeterminate="True" IsVisible="{Binding Busy}" Height="4" />
+   <Border Grid.Row="2" Background="{DynamicResource CyberAccentMutedBrush}" CornerRadius="8" Padding="12,10">
+    <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+     <StackPanel Spacing="3">
+      <TextBlock Text="ESTADO" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource CyberAccentBrush}" />
+      <TextBlock Text="{Binding Status}" FontSize="12" TextWrapping="Wrap" />
+     </StackPanel>
+     <StackPanel Grid.Column="1" Spacing="3">
+      <TextBlock Text="RESULTADO" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource CyberAccentBrush}" />
+      <TextBlock Text="{Binding DefenderSummary}" FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding Summary}" FontSize="12" TextWrapping="Wrap" />
+     </StackPanel>
+    </Grid>
+   </Border>
+  </Grid>
+  <TabControl Grid.Row="3" MinHeight="150">
    <TabItem Header="Hallazgos">
-    <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
-     <TextBox Text="{Binding FindingQuery}" Watermark="Filtrar por permiso, categoría, archivo o evidencia" />
-     <TextBlock Grid.Row="1" Text="{Binding FindingCount}" TextWrapping="Wrap" />
+    <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8" Margin="0,8,0,0">
+     <TextBox Text="{Binding FindingQuery}" Watermark="Buscar por categoría, archivo o evidencia" />
+     <TextBlock Grid.Row="1" Text="{Binding FindingCount}" Classes="helper-text" />
      <ListBox Grid.Row="2" ItemsSource="{Binding VisibleFindings}">
       <ListBox.ItemTemplate>
        <DataTemplate x:DataType="services:CodeEvidence">
-        <StackPanel Spacing="4" Margin="6" MaxWidth="820">
+        <StackPanel Spacing="4" Margin="8" MaxWidth="820">
          <TextBlock Text="{Binding Category}" FontWeight="Bold" />
          <TextBlock Text="{Binding Explanation}" TextWrapping="Wrap" />
-         <TextBlock Text="{Binding Location}" TextWrapping="Wrap" FontSize="12" />
+         <TextBlock Text="{Binding Location}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CyberHelperTextBrush}" />
          <TextBlock Text="{Binding Evidence}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" />
         </StackPanel>
        </DataTemplate>
@@ -41,24 +64,24 @@
      </ListBox>
     </Grid>
    </TabItem>
-   <TabItem Header="Resultados e informe">
-    <TextBox Text="{Binding ResultText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="13" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+   <TabItem Header="Informe">
+    <TextBox Text="{Binding ResultText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="13" ScrollViewer.VerticalScrollBarVisibility="Auto" Margin="0,8,0,0" />
    </TabItem>
    <TabItem Header="Cuarentena">
     <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12" Margin="10">
-     <TextBlock Text="Cuarentena reversible: no elimina virus del interior del APK ni limpia dispositivos Android." TextWrapping="Wrap" />
+     <TextBlock Text="La cuarentena es reversible: no modifica el APK ni limpia dispositivos Android." TextWrapping="Wrap" />
      <ListBox Grid.Row="1" ItemsSource="{Binding QuarantineEntries}" SelectedItem="{Binding SelectedEntry}" />
-     <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10">
-      <Button Content="Actualizar lista" Command="{Binding RefreshQuarantineCommand}" />
+     <WrapPanel Grid.Row="2" Orientation="Horizontal">
+      <Button Content="Actualizar lista" Command="{Binding RefreshQuarantineCommand}" Margin="0,0,8,0" />
       <Button Content="Restaurar seleccionado" Command="{Binding RestoreCommand}" />
-     </StackPanel>
+     </WrapPanel>
     </Grid>
    </TabItem>
   </TabControl>
-  <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="10">
-   <Button Content="Guardar TXT y JSON" Command="{Binding SaveCommand}" />
-   <Button Content="Poner APK en cuarentena" Command="{Binding IsolateCommand}" />
-   <Button Content="Borrar datos generados" Command="{Binding CleanCommand}" />
-  </StackPanel>
+  <WrapPanel Grid.Row="4" Orientation="Horizontal">
+   <Button Content="Guardar informe" Command="{Binding SaveCommand}" Margin="0,0,8,4" />
+   <Button Content="Poner en cuarentena" Command="{Binding IsolateCommand}" Margin="0,0,8,4" />
+   <Button Content="Borrar datos generados" Command="{Binding CleanCommand}" Margin="0,0,8,4" />
+  </WrapPanel>
  </Grid>
 </UserControl>

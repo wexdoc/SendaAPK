@@ -1,3 +1,4 @@
+<!-- Modified for SendaAPK (2026); original work remains credited in NOTICE. -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:PulseAPK.Core.ViewModels;assembly=PulseAPK.Core"
@@ -18,7 +19,7 @@
 
             <Border Classes="card">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Appearance"
+                    <TextBlock Text="APARIENCIA"
                                FontSize="13"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource CyberAccentBrush}" />
@@ -53,7 +54,7 @@
 
             <Border Classes="card">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Toolchain"
+                    <TextBlock Text="HERRAMIENTAS"
                                FontSize="13"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource CyberAccentBrush}" />
@@ -69,7 +70,7 @@
                         <Button Grid.Column="2"
                                 Content="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[DownloadApktoolButton]}"
                                 Command="{Binding DownloadApktoolCommand}"
-                                Width="150" />
+                                MinWidth="180" />
                     </Grid>
 
                     <TextBlock Text="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[UbersignPath]}"
@@ -83,7 +84,7 @@
                         <Button Grid.Column="2"
                                 Content="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[DownloadUbersignerButton]}"
                                 Command="{Binding DownloadUbersignerCommand}"
-                                Width="150" />
+                                MinWidth="180" />
                     </Grid>
                 </StackPanel>
             </Border>
@@ -95,7 +96,7 @@
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource CyberAccentBrush}" />
 
-                    <TextBlock Text="ADB Path"
+                    <TextBlock Text="Ruta de ADB"
                                FontWeight="SemiBold" />
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <TextBox Text="{Binding AdbPath}" Watermark="{Binding AdbPathWatermark}" />
@@ -109,12 +110,12 @@
 
             <Border Classes="card">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Beta Features"
+                    <TextBlock Text="FUNCIONES EXPERIMENTALES"
                                FontSize="13"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource CyberAccentBrush}" />
 
-                    <ToggleSwitch Content="Device Tools"
+                    <ToggleSwitch Content="Herramientas de dispositivos"
                                   IsChecked="{Binding IsDeviceToolsEnabled}" />
                     <TextBlock Text="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[PatchBetaWarning]}"
                                Classes="helper-text"

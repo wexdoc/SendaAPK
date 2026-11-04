@@ -1,243 +1,91 @@
 <!-- Modified for SendaAPK (2026); original work remains credited in NOTICE. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:PulseAPK.Core.ViewModels;assembly=PulseAPK.Core"
         xmlns:views="clr-namespace:PulseAPK.Avalonia.Views"
-        xmlns:services="clr-namespace:PulseAPK.Core.Services;assembly=PulseAPK.Core"
-        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
         x:Class="PulseAPK.Avalonia.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="{Binding WindowTitle}"
         Icon="/Assets/SendaAPK.png"
-        Width="1280"
-        Height="720"
-        WindowStartupLocation="CenterScreen"
-        MinWidth="1100"
-        MinHeight="640">
-
+        Width="1280" Height="760" MinWidth="940" MinHeight="620"
+        WindowStartupLocation="CenterScreen">
     <Window.Styles>
         <Style Selector="Button.nav-button">
-            <Setter Property="Background" Value="{DynamicResource CyberAccentMutedBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CyberAccentBrush}" />
-            <Setter Property="BorderThickness" Value="4,1,1,1" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Foreground" Value="{DynamicResource CyberAccentBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="3,0,0,0" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Foreground" Value="{DynamicResource CyberConsoleForegroundBrush}" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
-            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="MinHeight" Value="39" />
+            <Setter Property="Padding" Value="13,8" />
         </Style>
-
         <Style Selector="Button.nav-button:pointerover">
             <Setter Property="Background" Value="{DynamicResource CyberPointerOverBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CyberAccentSecondaryBrush}" />
-            <Setter Property="BorderThickness" Value="6,1.5,1.5,1.5" />
-            <Setter Property="Foreground" Value="{DynamicResource CyberAccentSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource CyberAccentBrush}" />
         </Style>
-
-        <Style Selector="Button.nav-button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource CyberPointerOverBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CyberAccentSecondaryBrush}" />
-        </Style>
-
-        <Style Selector="Button.nav-button:pressed">
-            <Setter Property="Background" Value="{DynamicResource CyberAccentPressedBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CyberWarningBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource CyberConsoleForegroundBrush}" />
-        </Style>
-
         <Style Selector="Button.nav-button.active">
             <Setter Property="Background" Value="{DynamicResource CyberSelectedBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource CyberSelectedBorderBrush}" />
-            <Setter Property="BorderThickness" Value="6,1,1,1" />
-            <Setter Property="CornerRadius" Value="4" />
             <Setter Property="Foreground" Value="{DynamicResource CyberSelectedForegroundBrush}" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Opacity" Value="1" />
         </Style>
-
-        <Style Selector="Button.support-work-button">
-            <Setter Property="Background" Value="{DynamicResource CyberAccentMutedBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CyberAccentSecondaryBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Foreground" Value="{DynamicResource CyberAccentSecondaryBrush}" />
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <Setter Property="MinHeight" Value="30" />
-            <Setter Property="Padding" Value="8,5" />
-            <Style.Animations>
-                <Animation Duration="0:0:0.30"
-                           IterationCount="3">
-                    <KeyFrame Cue="0%">
-                        <Setter Property="Background" Value="{DynamicResource CyberAccentMutedBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource CyberAccentSecondaryBrush}" />
-                    </KeyFrame>
-                    <KeyFrame Cue="50%">
-                        <Setter Property="Background" Value="{DynamicResource CyberAccentPressedBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource CyberWarningBrush}" />
-                    </KeyFrame>
-                    <KeyFrame Cue="100%">
-                        <Setter Property="Background" Value="{DynamicResource CyberAccentMutedBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource CyberAccentSecondaryBrush}" />
-                    </KeyFrame>
-                </Animation>
-            </Style.Animations>
-        </Style>
-
-        <Style Selector="Button.support-work-button:pointerover">
-            <Setter Property="Background" Value="#10131F" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CyberAccentBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource CyberAccentBrush}" />
-        </Style>
-
-        <Style Selector="Button.support-work-button:pressed">
-            <Setter Property="Background" Value="{DynamicResource CyberAccentPressedBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CyberWarningBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource CyberConsoleForegroundBrush}" />
+        <Style Selector="TextBlock.nav-heading">
+            <Setter Property="Foreground" Value="{DynamicResource CyberHelperTextBrush}" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="LetterSpacing" Value="1.1" />
+            <Setter Property="Margin" Value="14,18,0,6" />
         </Style>
     </Window.Styles>
-
     <Window.DataTemplates>
-        <DataTemplate DataType="{x:Type vm:LocalApkViewModel}">
-            <views:LocalApkView/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:DecompileViewModel}">
-            <views:DecompileView/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:BuildViewModel}">
-            <views:BuildView/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:PatchViewModel}">
-            <views:PatchView/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
-            <views:SettingsView/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:AnalyserViewModel}">
-            <views:AnalyserView/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:DeviceToolsViewModel}">
-            <views:DeviceToolsView/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:AboutViewModel}">
-            <views:AboutView/>
-        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:LocalApkViewModel}"><views:LocalApkView/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DecompileViewModel}"><views:DecompileView/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:BuildViewModel}"><views:BuildView/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:PatchViewModel}"><views:PatchView/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SettingsViewModel}"><views:SettingsView/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:AnalyserViewModel}"><views:AnalyserView/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DeviceToolsViewModel}"><views:DeviceToolsView/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:AboutViewModel}"><views:AboutView/></DataTemplate>
     </Window.DataTemplates>
-
-    <Grid ColumnDefinitions="290, *">
-        <!-- Sidebar -->
-        <Border Grid.Column="0" Background="{DynamicResource CyberSidebarBrush}" Padding="16">
-            <Grid RowDefinitions="Auto,*,Auto">
-            <StackPanel Grid.Row="0" Spacing="8">
-                <StackPanel Margin="0,0,0,8">
-                    <TextBlock Text="SendaAPK"
-                               FontSize="30"
-                               FontWeight="Black"
-                               Foreground="{DynamicResource CyberAccentBrush}"
-                               HorizontalAlignment="Center"
-                               LetterSpacing="1.5"/>
-                    <TextBlock Text="ANÁLISIS LOCAL DE APK"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource CyberAccentSecondaryBrush}"
-                               HorizontalAlignment="Center"
-                               LetterSpacing="2"
-                               Margin="0,2,0,14"/>
-                    <Border Height="1"
-                            Background="{DynamicResource CyberAccentBrush}"
-                            Opacity="0.65"
-                            Margin="12,0,12,10"/>
+    <Grid ColumnDefinitions="242,*">
+        <Border Background="{DynamicResource CyberSidebarBrush}" Padding="16,24,16,18">
+            <Grid RowDefinitions="*,Auto" RowSpacing="12">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="10" Margin="8,0,0,18">
+                            <Image Source="/Assets/SendaAPK.png" Width="36" Height="36" />
+                            <StackPanel VerticalAlignment="Center" Spacing="1">
+                                <TextBlock Text="SendaAPK" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource CyberConsoleForegroundBrush}" />
+                                <TextBlock Text="ANÁLISIS LOCAL" FontSize="9" FontWeight="SemiBold" LetterSpacing="1.2" Foreground="{DynamicResource CyberHelperTextBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock Text="PRINCIPAL" Classes="nav-heading" />
+                        <Button Classes="nav-button" Content="{Binding MenuAnalyserLabel}" Command="{Binding NavigateToAnalyserCommand}" Classes.active="{Binding IsAnalyserSelected}" IsVisible="{Binding IsAnalyserEnabled}" />
+                        <TextBlock Text="LABORATORIO" Classes="nav-heading" />
+                        <Button Classes="nav-button" Content="{Binding MenuDecompileLabel}" Command="{Binding NavigateToDecompileCommand}" Classes.active="{Binding IsDecompileSelected}" IsVisible="{Binding IsDecompileEnabled}" />
+                        <Button Classes="nav-button" Content="{Binding MenuBuildLabel}" Command="{Binding NavigateToBuildCommand}" Classes.active="{Binding IsBuildSelected}" IsVisible="{Binding IsBuildEnabled}" />
+                        <Button Classes="nav-button" Content="{Binding MenuPatchLabel}" Command="{Binding NavigateToPatchCommand}" Classes.active="{Binding IsPatchSelected}" IsVisible="{Binding IsPatchEnabled}" />
+                        <Button Classes="nav-button" Content="{Binding MenuDeviceToolsLabel}" Command="{Binding NavigateToDeviceToolsCommand}" Classes.active="{Binding IsDeviceToolsSelected}" IsVisible="{Binding IsDeviceToolsEnabled}" />
+                        <TextBlock Text="PROYECTO" Classes="nav-heading" />
+                        <Button Classes="nav-button" Content="{Binding MenuSettingsLabel}" Command="{Binding NavigateToSettingsCommand}" Classes.active="{Binding IsSettingsSelected}" IsVisible="{Binding IsSettingsEnabled}" />
+                        <Button Classes="nav-button" Content="{Binding MenuAboutLabel}" Command="{Binding NavigateToAboutCommand}" Classes.active="{Binding IsAboutSelected}" IsVisible="{Binding IsAboutEnabled}" />
+                    </StackPanel>
+                </ScrollViewer>
+                <StackPanel Grid.Row="1" Spacing="10">
+                    <TextBlock Text="{Binding ActiveTasksText}" IsVisible="{Binding HasActiveTasks}" TextWrapping="Wrap" Foreground="{DynamicResource CyberAccentBrush}" FontSize="12" />
+                    <Border BorderBrush="{DynamicResource CyberCardBorderBrush}" BorderThickness="1" CornerRadius="9" Padding="12">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="VERSIÓN PRELIMINAR" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource CyberAccentBrush}" />
+                            <TextBlock Text="Un proyecto abierto, en desarrollo." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource CyberHelperTextBrush}" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
-
-                <Button Classes="nav-button"
-                        Command="{Binding NavigateToDecompileCommand}"
-                        Classes.active="{Binding IsDecompileSelected}"
-                        IsVisible="{Binding IsDecompileEnabled}">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[MenuDecompile]}"/>
-                    </StackPanel>
-                </Button>
-                <Button Classes="nav-button"
-                        Command="{Binding NavigateToBuildCommand}"
-                        Classes.active="{Binding IsBuildSelected}"
-                        IsVisible="{Binding IsBuildEnabled}">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[MenuBuild]}"/>
-                    </StackPanel>
-                </Button>
-                <Button Classes="nav-button"
-                        Command="{Binding NavigateToPatchCommand}"
-                        Classes.active="{Binding IsPatchSelected}"
-                        IsVisible="{Binding IsPatchEnabled}">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{Binding MenuPatchLabel}"/>
-                    </StackPanel>
-                </Button>
-                <Button Classes="nav-button"
-                        Command="{Binding NavigateToAnalyserCommand}"
-                        Classes.active="{Binding IsAnalyserSelected}"
-                        IsVisible="{Binding IsAnalyserEnabled}">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{Binding MenuAnalyserLabel}"/>
-                    </StackPanel>
-                </Button>
-                <Button Classes="nav-button"
-                        Command="{Binding NavigateToDeviceToolsCommand}"
-                        Classes.active="{Binding IsDeviceToolsSelected}"
-                        IsVisible="{Binding IsDeviceToolsEnabled}">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{Binding MenuDeviceToolsLabel}"/>
-                    </StackPanel>
-                </Button>
-                <Button Classes="nav-button"
-                        Command="{Binding NavigateToSettingsCommand}"
-                        Classes.active="{Binding IsSettingsSelected}"
-                        IsVisible="{Binding IsSettingsEnabled}">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[MenuSettings]}"/>
-                    </StackPanel>
-                </Button>
-                <Button Classes="nav-button"
-                        Command="{Binding NavigateToAboutCommand}"
-                        Classes.active="{Binding IsAboutSelected}"
-                        IsVisible="{Binding IsAboutEnabled}">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[MenuAbout]}"/>
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-
-            <StackPanel Grid.Row="2" Spacing="8">
-            <TextBlock Text="{Binding ActiveTasksText}"
-                       IsVisible="{Binding HasActiveTasks}"
-                       TextWrapping="Wrap"
-                       Foreground="{DynamicResource CyberAccentBrush}" />
-            <Border
-                    IsVisible="{Binding IsSupportWorkVisible}"
-                    Background="#33141B2E"
-                    BorderBrush="{DynamicResource CyberAccentBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8"
-                    Padding="4"
-                    Margin="0,10,0,0">
-                <Button Classes="support-work-button"
-                        Command="{Binding OpenSupportWorkCommand}">
-                    <TextBlock Text="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[SupportWork]}"
-                               FontSize="12"
-                               FontWeight="SemiBold"/>
-                </Button>
-            </Border>
-            </StackPanel>
             </Grid>
         </Border>
-
-        <!-- Content -->
-        <Border Grid.Column="1" Background="{DynamicResource MainBackgroundBrush}" Padding="20">
-            <ContentControl Content="{Binding CurrentView}"
-                            HorizontalAlignment="Stretch"
-                            VerticalAlignment="Stretch"/>
+        <Border Grid.Column="1" Background="{DynamicResource MainBackgroundBrush}" Padding="12">
+            <ContentControl Content="{Binding CurrentView}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
         </Border>
     </Grid>
 </Window>

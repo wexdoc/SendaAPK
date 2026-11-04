@@ -1,3 +1,4 @@
+<!-- Modified for SendaAPK (2026); original work remains credited in NOTICE. -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:PulseAPK.Core.ViewModels;assembly=PulseAPK.Core"
@@ -52,7 +53,7 @@
 
         <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="16">
             <StackPanel Spacing="8">
-                <TextBlock Text="OPTIONS"
+                <TextBlock Text="OPCIONES"
                            Foreground="{DynamicResource CyberAccentBrush}"
                            FontSize="11"
                            FontWeight="SemiBold" />
@@ -62,7 +63,7 @@
                           IsChecked="{Binding SignApk}" />
             </StackPanel>
             <StackPanel Grid.Column="1" Spacing="8">
-                <TextBlock Text="OUTPUT"
+                <TextBlock Text="SALIDA"
                            Foreground="{DynamicResource CyberAccentBrush}"
                            FontSize="11"
                            FontWeight="SemiBold" />
@@ -97,7 +98,7 @@
                     <Border Grid.Column="2"
                             Classes="live-log-pill"
                             VerticalAlignment="Center">
-                        <TextBlock Text="LIVE LOG"
+                        <TextBlock Text="EN DIRECTO"
                                    Classes="live-log-pill-text" />
                     </Border>
                 </Grid>
