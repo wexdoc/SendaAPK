@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using PulseAPK.Core.Models;
 using PulseAPK.Core.Services.Patching;
 using System.Text;
@@ -6,6 +7,24 @@ namespace PulseAPK.Tests.Services.Patching;
 
 public class PatchRequestValidatorServiceTests
 {
+    [Fact]
+    public void Validate_RejectsOriginalAndExistingOutput()
+    {
+        var input = Path.GetTempFileName();
+        var existing = Path.GetTempFileName();
+        try
+        {
+            var service = new PatchRequestValidatorService();
+            var same = service.Validate(new PatchRequest { InputApkPath = input, OutputApkPath = input });
+            Assert.Contains(same, e => e.Contains("original", StringComparison.OrdinalIgnoreCase));
+            var collision = service.Validate(new PatchRequest { InputApkPath = input, OutputApkPath = existing });
+            Assert.Contains(collision, e => e.Contains("ya existe", StringComparison.OrdinalIgnoreCase));
+            Assert.True(File.Exists(input));
+            Assert.True(File.Exists(existing));
+        }
+        finally { File.Delete(input); File.Delete(existing); }
+    }
+
     [Fact]
     public void Validate_ReturnsErrors_WhenRequiredInputsMissing()
     {

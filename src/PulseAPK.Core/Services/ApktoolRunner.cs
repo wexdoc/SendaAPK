@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -60,6 +61,11 @@ namespace PulseAPK.Core.Services
             if (useAapt2) args.Add("--use-aapt2");
 
             return await RunProcessAsync(args, cancellationToken);
+        }
+
+        public Task<ApktoolRunResult> RunManifestDecodeAsync(string apkPath, string outputDir, CancellationToken cancellationToken = default)
+        {
+            return RunProcessAsync(new[] { "d", SanitizePathArgument(apkPath), "--only-manifest", "-s", "--no-assets", "-o", SanitizePathArgument(outputDir) }, cancellationToken);
         }
 
         private async Task<ApktoolRunResult> RunProcessAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)

@@ -1,17 +1,18 @@
+<!-- Modified for SendaAPK (2026); original work remains credited in NOTICE. -->
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType Condition="$([MSBuild]::IsOSPlatform('Windows'))">WinExe</OutputType>
     <OutputType Condition="!$([MSBuild]::IsOSPlatform('Windows'))">Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
     <PathMap>$(MSBuildProjectDirectory)=/src</PathMap>
-    <ApplicationIcon>..\..\Resources\CyberUnpack.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\Resources\SendaAPK.ico</ApplicationIcon>
     <AssemblyName>PulseAPK</AssemblyName>
-    <Product>PulseAPK</Product>
+    <Product>SendaAPK</Product>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,6 +35,7 @@
     <AvaloniaResource Include="..\..\Resources\CyberUnpack.ico" Link="Assets\CyberUnpack.ico" />
     <AvaloniaResource Include="..\..\Resources\CyberUnpack.png" Link="Assets\CyberUnpack.png" />
     <AvaloniaResource Include="..\..\Resources\PulseAPK.png" Link="Assets\PulseAPK.png" />
+    <AvaloniaResource Include="..\..\Resources\SendaAPK.png" Link="Assets\SendaAPK.png" />
     <AvaloniaResource Include="..\..\Resources\PulseAPK.icns" Link="Assets\PulseAPK.icns" />
   </ItemGroup>
 

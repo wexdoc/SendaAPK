@@ -8,3 +8,6 @@ Attribution and contribution records
 - Contributor attribution is tracked through the Git commit history and pull request metadata.
 - All contributions are additionally documented through the Contributor License Agreement process in CLA.md.
 - Individual contributors retain copyright in their own contributions, while licensing contributions under Apache License 2.0 terms as described in LICENSE.md and CLA.md.
+
+SendaAPK
+Based on PulseAPK by Dmitry Yarygin and contributors. Changes for SendaAPK are documented in CHANGES-SENDAAPK.md. SendaAPK is an independent project and is not endorsed by the original authors.

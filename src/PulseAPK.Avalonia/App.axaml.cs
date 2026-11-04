@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -36,6 +37,15 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var mainWindow = Services.GetRequiredService<MainWindow>();
+            var localAnalysis = Services.GetRequiredService<LocalApkViewModel>();
+            var args = desktop.Args ?? Array.Empty<string>();
+            if (args.Length == 2 && args[0] == "--apk") localAnalysis.ApkPath = args[1];
+            mainWindow.Closing += (_, e) =>
+            {
+                if (!localAnalysis.Busy) return;
+                e.Cancel = true;
+                if (localAnalysis.CancelCommand.CanExecute(null)) localAnalysis.CancelCommand.Execute(null);
+            };
             desktop.MainWindow = mainWindow;
         }
 
@@ -54,6 +64,11 @@ public partial class App : Application
         services.AddTransient<UbersignRunner>();
         services.AddTransient<SmaliAnalyserService>();
         services.AddTransient<ReportService>();
+        services.AddSingleton<ILocalProcessRunner, LocalProcessRunner>();
+        services.AddSingleton<IDefenderScanService, DefenderScanService>();
+        services.AddSingleton<LocalAnalysisService>();
+        services.AddSingleton<QuarantineService>();
+        services.AddSingleton<LocalApkViewModel>();
         services.AddSingleton<AdbService>();
         services.AddSingleton<ISystemService, PulseAPK.Core.Services.SystemService>();
 

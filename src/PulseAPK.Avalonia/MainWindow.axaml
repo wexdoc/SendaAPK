@@ -1,3 +1,4 @@
+<!-- Modified for SendaAPK (2026); original work remains credited in NOTICE. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -9,11 +10,12 @@
         x:Class="PulseAPK.Avalonia.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="{Binding WindowTitle}"
-        Icon="/Assets/PulseAPK.png"
+        Icon="/Assets/SendaAPK.png"
         Width="1280"
-        Height="800"
+        Height="720"
+        WindowStartupLocation="CenterScreen"
         MinWidth="1100"
-        MinHeight="760">
+        MinHeight="640">
 
     <Window.Styles>
         <Style Selector="Button.nav-button">
@@ -98,6 +100,9 @@
     </Window.Styles>
 
     <Window.DataTemplates>
+        <DataTemplate DataType="{x:Type vm:LocalApkViewModel}">
+            <views:LocalApkView/>
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:DecompileViewModel}">
             <views:DecompileView/>
         </DataTemplate>
@@ -127,13 +132,13 @@
             <Grid RowDefinitions="Auto,*,Auto">
             <StackPanel Grid.Row="0" Spacing="8">
                 <StackPanel Margin="0,0,0,8">
-                    <TextBlock Text="PulseAPK"
+                    <TextBlock Text="SendaAPK"
                                FontSize="30"
                                FontWeight="Black"
                                Foreground="{DynamicResource CyberAccentBrush}"
                                HorizontalAlignment="Center"
                                LetterSpacing="1.5"/>
-                    <TextBlock Text="APK REVERSE LAB"
+                    <TextBlock Text="ANÁLISIS LOCAL DE APK"
                                FontSize="11"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource CyberAccentSecondaryBrush}"
@@ -175,7 +180,7 @@
                         Classes.active="{Binding IsAnalyserSelected}"
                         IsVisible="{Binding IsAnalyserEnabled}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[MenuAnalyser]}"/>
+                        <TextBlock Text="{Binding MenuAnalyserLabel}"/>
                     </StackPanel>
                 </Button>
                 <Button Classes="nav-button"

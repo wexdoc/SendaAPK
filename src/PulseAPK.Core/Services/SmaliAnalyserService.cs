@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,7 +9,7 @@ namespace PulseAPK.Core.Services
 {
     public class SmaliAnalyserService
     {
-        public async Task<AnalysisResult> AnalyseProjectAsync(string projectPath, Action<string>? logCallback)
+        public async Task<AnalysisResult> AnalyseProjectAsync(string projectPath, Action<string>? logCallback, CancellationToken cancellationToken = default, bool includeLibraries = false)
         {
             var result = new AnalysisResult();
 
@@ -32,6 +33,7 @@ namespace PulseAPK.Core.Services
 
             // Find all .smali files recursively, skipping inaccessible directories (sandbox/container safe)
             var smaliFiles = GetSmaliFiles(projectPath, logCallback);
+            result.SmaliFilesFound = smaliFiles.Length;
 
             if (smaliFiles.Length == 0)
             {
@@ -62,10 +64,11 @@ namespace PulseAPK.Core.Services
 
                 foreach (var file in smaliFiles)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     try
                     {
                         // Run all detections on this file
-                        AnalyzeFile(file, result, rules, regexCache, categoryOrder, normalizedProjectRoot);
+                        AnalyzeFile(file, result, rules, regexCache, categoryOrder, normalizedProjectRoot, cancellationToken, includeLibraries);
                         
                         processedFiles++;
                         
@@ -75,8 +78,9 @@ namespace PulseAPK.Core.Services
                             logCallback?.Invoke($"({processedFiles}/{totalFiles} files processed)");
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not OperationCanceledException)
                     {
+                        result.ReadErrors++;
                         logCallback?.Invoke($"Error reading file {file}: {ex.Message}");
                     }
                 }
@@ -112,11 +116,14 @@ namespace PulseAPK.Core.Services
             AnalysisRuleSet rules,
             Dictionary<string, List<Regex>> regexCache,
             IReadOnlyList<string> categoryOrder,
-            string projectRoot)
+            string projectRoot,
+            CancellationToken cancellationToken,
+            bool includeLibraries)
         {
             // Skip library classes
-            if (IsLibraryClass(filePath, projectRoot, rules.LibraryPaths))
+            if (!includeLibraries && IsLibraryClass(filePath, projectRoot, rules.LibraryPaths))
             {
+                result.SkippedLibraryFiles++;
                 return;
             }
 
@@ -128,6 +135,7 @@ namespace PulseAPK.Core.Services
                 : null;
             foreach (var line in File.ReadLines(filePath))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 lineNumber++;
 
                 foreach (var category in categoryOrder)
@@ -153,6 +161,7 @@ namespace PulseAPK.Core.Services
                     }
                 }
             }
+            result.AnalyzedFiles++;
         }
 
         private bool IsLibraryClass(string filePath, string projectRoot, List<string> libraryPaths)
@@ -229,7 +238,7 @@ namespace PulseAPK.Core.Services
                 {
                     try
                     {
-                        compiledPatterns.Add(new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled));
+                        compiledPatterns.Add(new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromMilliseconds(250)));
                     }
                     catch (ArgumentException ex)
                     {
@@ -316,6 +325,10 @@ namespace PulseAPK.Core.Services
 
     public class AnalysisResult
     {
+        public int ReadErrors { get; set; }
+        public int SmaliFilesFound { get; set; }
+        public int SkippedLibraryFiles { get; set; }
+        public int AnalyzedFiles { get; set; }
         public HashSet<string> ActiveCategories { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public List<Finding> RootChecks { get; set; } = new List<Finding>();
         public List<Finding> EmulatorChecks { get; set; } = new List<Finding>();

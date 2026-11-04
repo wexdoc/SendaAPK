@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
@@ -14,7 +15,7 @@ public partial class AboutViewModel : ObservableObject
     private readonly ISystemService _systemService;
 
     public string AppVersion => GetAppVersion();
-    public string DeveloperName { get; } = "Dmitry Yarygin";
+    public string DeveloperName { get; } = "Proyecto SendaAPK";
     public string Year { get; } = "2026";
 
     public AboutViewModel(ISystemService systemService)

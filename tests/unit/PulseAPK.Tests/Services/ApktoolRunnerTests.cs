@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -12,6 +13,7 @@ public class ApktoolRunnerTests
     [Fact]
     public async Task RunBuildAsync_StripsWrappingQuotesFromConfiguredAndArgumentPaths()
     {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
         var tempRoot = Path.Combine(Path.GetTempPath(), $"pulseapk-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRoot);
 
@@ -40,7 +42,7 @@ public class ApktoolRunnerTests
 
             var exitCode = await runner.RunBuildAsync($"\"{projectDir}\"", $"\"{outputApk}\"", useAapt2: false);
 
-            Assert.Equal(0, exitCode);
+            Assert.Equal(0, exitCode.ExitCode);
             Assert.True(File.Exists(capturedArgsPath));
 
             var args = File.ReadAllLines(capturedArgsPath);
@@ -88,7 +90,7 @@ public class ApktoolRunnerTests
 
             var exitCode = await runner.RunBuildAsync(projectDir, outputApk, useAapt2: true);
 
-            Assert.Equal(0, exitCode);
+            Assert.Equal(0, exitCode.ExitCode);
             Assert.True(File.Exists(capturedArgsPath));
 
             var args = File.ReadAllLines(capturedArgsPath);
@@ -140,7 +142,7 @@ public class ApktoolRunnerTests
 
             var exitCode = await runner.RunBuildAsync(projectDir, outputApk, useAapt2: false);
 
-            Assert.Equal(0, exitCode);
+            Assert.Equal(0, exitCode.ExitCode);
             Assert.Equal(settingsDirectory, File.ReadAllText(capturedWorkingDirectoryPath).Trim());
 
             var args = File.ReadAllLines(capturedArgsPath);

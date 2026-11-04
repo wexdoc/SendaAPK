@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.ComponentModel;
@@ -30,7 +31,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public string MenuDecompileLabel => _localizationService["MenuDecompile"];
     public string MenuBuildLabel => _localizationService["MenuBuild"];
     public string MenuPatchLabel => _localizationService["MenuPatch"];
-    public string MenuAnalyserLabel => _localizationService["MenuAnalyser"];
+    public string MenuAnalyserLabel => "Analizar APK";
     public string MenuDeviceToolsLabel => _localizationService["MenuDeviceTools"];
     public string MenuSettingsLabel => _localizationService["MenuSettings"];
     public string MenuAboutLabel => _localizationService["MenuAbout"];
@@ -63,7 +64,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _localizationService = localizationService;
         _systemService = systemService;
         _settingsService = settingsService;
-        WindowTitle = _localizationService["AppTitle"];
+        WindowTitle = "SendaAPK · Análisis local de APK";
         _localizationService.PropertyChanged += HandleLocalizationChanged;
         _settingsService.SettingsChanged += HandleSettingsChanged;
         SetInitialView();
@@ -105,7 +106,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToAnalyser()
     {
         if (!CanNavigateToAnalyser()) return;
-        SetCurrentView(Resolve<AnalyserViewModel>());
+        var analyser = Resolve<LocalApkViewModel>();
+        analyser.RefreshQuarantineCommand.Execute(null);
+        SetCurrentView(analyser);
         SelectedMenu = "Analyser";
     }
 
@@ -199,7 +202,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void SetInitialView()
     {
-        if (CanNavigateToDecompile())
+        if (CanNavigateToAnalyser())
+        {
+            NavigateToAnalyser();
+        }
+        else if (CanNavigateToDecompile())
         {
             NavigateToDecompile();
         }

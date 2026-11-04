@@ -1,3 +1,4 @@
+<!-- Modified for SendaAPK (2026); original work remains credited in NOTICE. -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:PulseAPK.Core.ViewModels;assembly=PulseAPK.Core"
@@ -25,13 +26,13 @@
                             BorderThickness="1.5"
                             CornerRadius="6"
                             HorizontalAlignment="Center">
-                        <Image Source="avares://PulseAPK/Assets/CyberUnpack.png"
+                        <Image Source="avares://PulseAPK/Assets/SendaAPK.png"
                                Stretch="Uniform" />
                     </Border>
 
                     <StackPanel Spacing="6"
                                 HorizontalAlignment="Stretch">
-                        <TextBlock Text="PulseAPK"
+                        <TextBlock Text="SendaAPK"
                                    FontSize="42"
                                    FontWeight="Bold"
                                    Foreground="{DynamicResource CyberAccentBrush}"
@@ -54,6 +55,8 @@
 
                     <StackPanel Spacing="8"
                                 HorizontalAlignment="Center">
+                        <TextBlock Text="Basado en PulseAPK, de Dmitry Yarygin y colaboradores. Apache 2.0."
+                                   FontSize="13" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="360" />
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Center"
                                     Spacing="6">

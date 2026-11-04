@@ -1,6 +1,7 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
+# Modified for SendaAPK (2026); original work remains credited in NOTICE.
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
@@ -14,6 +15,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PulseAPK.Core", "src\PulseAPK.Core\PulseAPK.Core.csproj", "{05720E8F-7852-40A5-86B0-AABB6A032BD3}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PulseAPK.Avalonia", "src\PulseAPK.Avalonia\PulseAPK.Avalonia.csproj", "{54574781-42E2-4A8E-851E-D9D7A5E984DE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PulseAPK.Local.Tests", "tests\local\PulseAPK.Local.Tests.csproj", "{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -61,6 +64,18 @@ Global
 		{54574781-42E2-4A8E-851E-D9D7A5E984DE}.Release|x64.Build.0 = Release|Any CPU
 		{54574781-42E2-4A8E-851E-D9D7A5E984DE}.Release|x86.ActiveCfg = Release|Any CPU
 		{54574781-42E2-4A8E-851E-D9D7A5E984DE}.Release|x86.Build.0 = Release|Any CPU
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}.Debug|x64.Build.0 = Debug|Any CPU
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}.Debug|x86.Build.0 = Debug|Any CPU
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}.Release|x64.ActiveCfg = Release|Any CPU
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}.Release|x64.Build.0 = Release|Any CPU
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}.Release|x86.ActiveCfg = Release|Any CPU
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -70,6 +85,7 @@ Global
 		{5619EBDC-484C-4F27-8D2D-2F3E24D6CCAD} = {9D556B49-86D1-93A7-9596-FFAAB74EC556}
 		{05720E8F-7852-40A5-86B0-AABB6A032BD3} = {7580A35C-1BCF-4711-8ACE-79441DD0EAF8}
 		{54574781-42E2-4A8E-851E-D9D7A5E984DE} = {7580A35C-1BCF-4711-8ACE-79441DD0EAF8}
+		{BD52F6D3-93A6-4A42-94C7-704AA553A5DD} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {B12AE7FC-0BA9-4EBC-A3A1-1DA69FA86B8E}

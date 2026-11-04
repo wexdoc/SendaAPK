@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using PulseAPK.Core.Models;
 using System.Text;
 using System.Text.Json;
@@ -22,6 +23,28 @@ public sealed class PatchRequestValidatorService
         if (string.IsNullOrWhiteSpace(request.OutputApkPath))
         {
             errors.Add("Output APK path is required.");
+        }
+        else
+        {
+            try
+            {
+                var output = Path.GetFullPath(request.OutputApkPath);
+                if (!string.IsNullOrWhiteSpace(request.InputApkPath) &&
+                    string.Equals(Path.GetFullPath(request.InputApkPath), output, StringComparison.OrdinalIgnoreCase))
+                    errors.Add("La salida no puede reemplazar el APK original.");
+                if (File.Exists(output) || Directory.Exists(output))
+                    errors.Add("La ruta de salida ya existe. Elige otro nombre para conservar el archivo existente.");
+                var signed = Path.Combine(Path.GetDirectoryName(output)!, Path.GetFileNameWithoutExtension(output) + "_signed" + Path.GetExtension(output));
+                if (request.SignOutput && (File.Exists(signed) || Directory.Exists(signed)))
+                    errors.Add("La ruta de salida firmada ya existe. Elige otro nombre.");
+                if (request.SignOutput && !string.IsNullOrWhiteSpace(request.InputApkPath) &&
+                    string.Equals(Path.GetFullPath(request.InputApkPath), signed, StringComparison.OrdinalIgnoreCase))
+                    errors.Add("La salida firmada no puede reemplazar el APK original.");
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                errors.Add("La ruta de salida no es válida.");
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(request.ConfigFilePath) && !File.Exists(request.ConfigFilePath))

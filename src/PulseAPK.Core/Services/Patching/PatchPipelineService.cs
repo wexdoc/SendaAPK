@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using PulseAPK.Core.Abstractions.Patching;
 using PulseAPK.Core.Models;
 using System.Text.RegularExpressions;
@@ -519,31 +520,24 @@ public sealed class PatchPipelineService : IPatchPipelineService
             Directory.CreateDirectory(destinationDirectory);
         }
 
-        const int maxAttempts = 3;
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        // Stage in the destination directory, then publish without ever replacing an existing file.
+        var temporary = Path.Combine(destinationDirectory ?? Directory.GetCurrentDirectory(),
+            ".pulseapk-" + Guid.NewGuid().ToString("N") + ".tmp");
+        try
         {
-            try
+            using (var input = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
-                if (File.Exists(outputPath))
-                {
-                    File.Delete(outputPath);
-                }
-
-                File.Move(sourcePath, outputPath);
-                return outputPath;
+                input.CopyTo(output);
+                output.Flush(flushToDisk: true);
             }
-            catch (IOException) when (attempt < maxAttempts)
-            {
-                Thread.Sleep(TimeSpan.FromMilliseconds(150 * attempt));
-            }
-            catch (UnauthorizedAccessException) when (attempt < maxAttempts)
-            {
-                Thread.Sleep(TimeSpan.FromMilliseconds(150 * attempt));
-            }
+            File.Move(temporary, outputPath, overwrite: false);
+            return outputPath;
         }
-
-        File.Copy(sourcePath, outputPath, overwrite: true);
-        return outputPath;
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
     }
 
     private static string GetSignedPath(string outputApkPath)

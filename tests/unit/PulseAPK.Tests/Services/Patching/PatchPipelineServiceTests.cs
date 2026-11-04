@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using PulseAPK.Core.Abstractions.Patching;
 using PulseAPK.Core.Models;
 using PulseAPK.Core.Services.Patching;
@@ -808,11 +809,11 @@ public class PatchPipelineServiceTests
             _libAbis = libAbis ?? [];
         }
 
-        public Task<int> DecompileAsync(string apkPath, string outputDirectory, bool decodeResources, bool decodeSources, CancellationToken cancellationToken = default)
+        public Task<ApktoolRunResult> DecompileAsync(string apkPath, string outputDirectory, bool decodeResources, bool decodeSources, CancellationToken cancellationToken = default)
         {
             if (_decompileExitCode != 0)
             {
-                return Task.FromResult(_decompileExitCode);
+                return Task.FromResult(new ApktoolRunResult(_decompileExitCode, [], []));
             }
 
             Directory.CreateDirectory(outputDirectory);
@@ -826,14 +827,14 @@ public class PatchPipelineServiceTests
                 File.WriteAllBytes(Path.Combine(abiDirectory, "libdummy.so"), [0x7F, 0x45, 0x4C, 0x46]);
             }
 
-            return Task.FromResult(0);
+            return Task.FromResult(new ApktoolRunResult(0, [], []));
         }
 
-        public Task<int> BuildAsync(string decompiledDirectory, string outputApkPath, bool useAapt2, CancellationToken cancellationToken = default)
+        public Task<ApktoolRunResult> BuildAsync(string decompiledDirectory, string outputApkPath, bool useAapt2, CancellationToken cancellationToken = default)
         {
             if (_buildExitCode != 0)
             {
-                return Task.FromResult(_buildExitCode);
+                return Task.FromResult(new ApktoolRunResult(_buildExitCode, [], []));
             }
 
             using var stream = File.Create(outputApkPath);
@@ -841,7 +842,7 @@ public class PatchPipelineServiceTests
             var dexEntry = archive.CreateEntry("classes.dex");
             using var writer = new BinaryWriter(dexEntry.Open(), Encoding.UTF8, leaveOpen: false);
             writer.Write(Encoding.ASCII.GetBytes("Lcom/example/MainActivity;->loadFridaGadget()V"));
-            return Task.FromResult(0);
+            return Task.FromResult(new ApktoolRunResult(0, [], []));
         }
     }
 

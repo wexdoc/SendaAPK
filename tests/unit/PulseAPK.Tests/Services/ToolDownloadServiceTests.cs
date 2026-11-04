@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using System;
 using System.IO;
 using System.Net;
@@ -62,9 +63,9 @@ public class ToolDownloadServiceTests
             var result = await service.DownloadApktoolAsync();
 
             Assert.True(result.Downloaded);
-            Assert.Equal(toolRepository.GetToolPath("apktool.jar"), result.ToolPath);
-            Assert.True(File.Exists(result.ToolPath));
-            Assert.Equal(payload, await File.ReadAllBytesAsync(result.ToolPath));
+            Assert.Equal(toolRepository.GetToolPath("apktool.jar"), result.Path);
+            Assert.True(File.Exists(result.Path));
+            Assert.Equal(payload, await File.ReadAllBytesAsync(result.Path));
         }
         finally
         {

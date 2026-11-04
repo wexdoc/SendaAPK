@@ -1,0 +1,17 @@
+name: SendaAPK tests
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [tests/local/PulseAPK.Local.Tests.csproj, tests/unit/PulseAPK.Tests/PulseAPK.Tests.csproj]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test ${{ matrix.project }} --verbosity normal

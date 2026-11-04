@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Text;
@@ -165,32 +166,44 @@ public partial class BuildViewModel : ObservableObject
 
         if (File.Exists(OutputApkPath))
         {
-             var result = await _dialogService.ShowQuestionAsync($"The output file '{OutputApkPath}' already exists. Overwrite?", "Confirm overwrite");
-             if (!result) return;
+             await _dialogService.ShowErrorAsync("El archivo de salida ya existe. Elige otro nombre para conservarlo.");
+             return;
         }
 
         var signedApkPath = SignApk ? GetSignedApkPath(OutputApkPath) : string.Empty;
         if (SignApk && !string.IsNullOrWhiteSpace(signedApkPath) && File.Exists(signedApkPath))
         {
-            var result = await _dialogService.ShowQuestionAsync($"The signed output file '{signedApkPath}' already exists. Overwrite?", "Confirm overwrite");
-            if (!result) return;
+            await _dialogService.ShowErrorAsync("El archivo firmado ya existe. Elige otro nombre para conservarlo.");
+            return;
         }
 
         SetConsoleLog(Properties.Resources.StartingApktool);
         IsRunning = true;
 
+        var temporaryDirectory = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(OutputApkPath))!, ".pulseapk-" + Guid.NewGuid().ToString("N"));
         try
         {
-            var buildResult = await _apktoolRunner.RunBuildAsync(ProjectPath, OutputApkPath, UseAapt2);
+            Directory.CreateDirectory(temporaryDirectory);
+            var temporaryApk = Path.Combine(temporaryDirectory, Path.GetFileName(OutputApkPath));
+            var buildResult = await _apktoolRunner.RunBuildAsync(ProjectPath, temporaryApk, UseAapt2);
             var exitCode = buildResult.ExitCode;
 
             if (exitCode == 0)
             {
+                if (!File.Exists(temporaryApk)) throw new IOException("La herramienta no produjo el APK esperado.");
+                File.Move(temporaryApk, OutputApkPath, overwrite: false);
                 AppendLog(Properties.Resources.BuildSuccessful);
 
                 if (SignApk && !string.IsNullOrWhiteSpace(signedApkPath))
                 {
-                    await RunSigningAsync(OutputApkPath, signedApkPath);
+                    var temporarySigned = Path.Combine(temporaryDirectory, Path.GetFileName(signedApkPath));
+                    if (!await RunSigningAsync(OutputApkPath, temporarySigned))
+                    {
+                        await _dialogService.ShowErrorAsync("El APK se compiló, pero no se pudo firmar. Revisa el registro.");
+                        return;
+                    }
+                    File.Move(temporarySigned, signedApkPath, overwrite: false);
+                    AppendLog("Firma terminada. La verificación independiente de la firma aún no está disponible.");
                 }
 
                  await _dialogService.ShowInfoAsync(Properties.Resources.BuildSuccessful);
@@ -208,6 +221,16 @@ public partial class BuildViewModel : ObservableObject
         }
         finally
         {
+            try
+            {
+                if (Directory.Exists(temporaryDirectory))
+                {
+                    foreach (var file in Directory.EnumerateFiles(temporaryDirectory)) File.Delete(file);
+                    Directory.Delete(temporaryDirectory, recursive: false);
+                }
+            }
+            catch (IOException) { AppendLog("No se pudieron borrar todos los archivos temporales."); }
+            catch (UnauthorizedAccessException) { AppendLog("No se pudieron borrar todos los archivos temporales."); }
             IsRunning = false;
             RunBuildCommand.NotifyCanExecuteChanged();
         }
@@ -365,7 +388,7 @@ public partial class BuildViewModel : ObservableObject
         return OutputFolderPath;
     }
 
-    private async Task RunSigningAsync(string inputApk, string signedApkPath)
+    private async Task<bool> RunSigningAsync(string inputApk, string signedApkPath)
     {
         AppendLog($"Signing APK via ubersign to '{signedApkPath}'...");
 
@@ -376,16 +399,19 @@ public partial class BuildViewModel : ObservableObject
             if (exitCode == 0)
             {
                 AppendLog($"Signed APK created at '{signedApkPath}'.");
+                return true;
             }
             else
             {
                 AppendLog($"Signing failed (Exit Code: {exitCode}).");
+                return false;
             }
         }
         catch (Exception ex)
         {
             AppendLog($"Signing failed: {ex.Message}");
             await _dialogService.ShowWarningAsync(ex.Message, "Signing failed");
+            return false;
         }
     }
 
