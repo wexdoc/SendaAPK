@@ -2,6 +2,8 @@
 
 SendaAPK es un proyecto de escritorio, actualmente **preliminar**, para explorar APK en el equipo. Se basa en [PulseAPK-Core](https://github.com/deemoun/PulseAPK-Core), de Dmitry Yarygin y sus colaboradores, y conserva su licencia Apache 2.0 y sus avisos.
 
+Visita el [sitio web de SendaAPK](https://sendaapk.wexdoc.chatgpt.site/).
+
 **Estado:** el producto no tiene una versión estable. El análisis no instala ni ejecuta el APK. Los permisos, las URL y los indicios del código no demuestran infección; ningún resultado garantiza que el archivo sea seguro. Defender depende de la configuración del sistema y puede no estar disponible en modo privado. La cuarentena no desinfecta el contenido.
 
 En la última comprobación con .NET 10, las 40 pruebas del analizador local pasaron; 18 pruebas de la batería general seguían fallando. Esas cifras son una instantánea, no una garantía de funcionamiento. La verificación de firmas, el análisis ampliado de Ren'Py, la coordinación global de operaciones y la renovación de la interfaz están pendientes.

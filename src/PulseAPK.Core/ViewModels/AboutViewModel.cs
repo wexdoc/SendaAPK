@@ -118,7 +118,7 @@ public partial class AboutViewModel : ObservableObject
     [RelayCommand]
     private void OpenProjectPage()
     {
-        _systemService.OpenUrl("https://github.com/deemoun/PulseAPK-Core");
+        _systemService.OpenUrl("https://github.com/wexdoc/SendaAPK");
     }
 
     [RelayCommand]

@@ -76,12 +76,12 @@
 
                     <StackPanel Spacing="10"
                                 HorizontalAlignment="Stretch">
-                        <Button Content="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[About_ProjectPage]}"
+                        <Button Content="Proyecto SendaAPK"
                                 Command="{Binding OpenProjectPageCommand}"
                                 Width="240"
                                 HorizontalAlignment="Center"
                                 HorizontalContentAlignment="Center" />
-                        <Button Content="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[About_DeveloperPage]}"
+                        <Button Content="Autor de PulseAPK"
                                 Command="{Binding OpenDeveloperPageCommand}"
                                 Width="240"
                                 HorizontalAlignment="Center"
