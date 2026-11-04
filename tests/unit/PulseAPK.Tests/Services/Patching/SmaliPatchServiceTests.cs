@@ -605,7 +605,7 @@ public class SmaliPatchServiceTests
         Assert.True(result.Success);
         Assert.Contains(
             "invoke-super {p0, p1}, Landroid/app/Activity;->onCreate(Landroid/os/Bundle;)V\n    invoke-static {}, Lcom/example/MainActivity;->loadFridaGadget()V\n    const/4 v0, 0x0",
-            output,
+            output.Replace("\r\n", "\n", StringComparison.Ordinal),
             StringComparison.Ordinal);
     }
 
@@ -636,7 +636,7 @@ public class SmaliPatchServiceTests
         Assert.True(result.Success);
         Assert.Contains(
             ".locals 1\n    invoke-static {}, Lcom/example/MainActivity;->loadFridaGadget()V\n    invoke-super {p0, p1},Landroid/app/Activity;->onCreate(Landroid/os/Bundle;)V",
-            output,
+            output.Replace("\r\n", "\n", StringComparison.Ordinal),
             StringComparison.Ordinal);
         Assert.Contains(".method private static loadFridaGadget()V", output, StringComparison.Ordinal);
     }
