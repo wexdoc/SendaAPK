@@ -16,6 +16,7 @@ Esta versión modifica la obra original PulseAPK. Conserva LICENSE.md, NOTICE y 
 - `src/PulseAPK.Avalonia/MainWindow.axaml`
 - `src/PulseAPK.Avalonia/PulseAPK.Avalonia.csproj`
 - `src/PulseAPK.Avalonia/Views/AboutView.axaml`
+- `src/PulseAPK.Avalonia/Views/DecompileView.axaml`
 - `src/PulseAPK.Core/Properties/Resources.es-ES.resx`
 - `src/PulseAPK.Core/Properties/Resources.resx`
 - `src/PulseAPK.Core/Models/PatchRequest.cs`
@@ -29,6 +30,7 @@ Esta versión modifica la obra original PulseAPK. Conserva LICENSE.md, NOTICE y 
 - `src/PulseAPK.Core/Services/SmaliAnalyserService.cs`
 - `src/PulseAPK.Core/ViewModels/AboutViewModel.cs`
 - `src/PulseAPK.Core/ViewModels/BuildViewModel.cs`
+- `src/PulseAPK.Core/ViewModels/DecompileViewModel.cs`
 - `src/PulseAPK.Core/ViewModels/MainViewModel.cs`
 - `src/PulseAPK.Core/ViewModels/PatchViewModel.cs`
 - `tests/unit/PulseAPK.Tests/PulseAPK.Tests.csproj`

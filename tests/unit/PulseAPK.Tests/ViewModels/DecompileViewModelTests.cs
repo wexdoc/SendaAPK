@@ -21,6 +21,16 @@ public class DecompileViewModelTests
     }
 
     [Fact]
+    public async Task SelectingOutputParentProposesANewProjectFolder()
+    {
+        var picker = new TestFilePickerService { SelectedFolder = Path.GetTempPath() };
+        using var viewModel = CreateViewModel(string.Empty, filePicker: picker);
+        viewModel.ApkPath = Path.Combine(Path.GetTempPath(), "ejemplo con espacios.apk");
+        await viewModel.BrowseOutputFolderCommand.ExecuteAsync(null);
+        Assert.Equal(Path.Combine(picker.SelectedFolder, "ejemplo con espacios"), viewModel.OutputFolder);
+    }
+
+    [Fact]
     public void RunCommand_IsDisabledWhileRunning()
     {
         var viewModel = CreateViewModel(apktoolPath: string.Empty);
@@ -53,6 +63,72 @@ public class DecompileViewModelTests
         finally { File.Delete(apkPath); }
     }
 
+    [Fact]
+    public async Task CancelCommand_StopsTheRunningToolAndRestoresTheInterface()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var root = Path.Combine(Path.GetTempPath(), "senda-cancel-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var tool = Path.Combine(root, "slow-tool.cmd");
+        var apk = Path.Combine(root, "sample.apk");
+        await File.WriteAllTextAsync(tool, "@echo off\r\nping -n 60 127.0.0.1 >nul\r\n");
+        await File.WriteAllTextAsync(apk, "sample");
+        using var viewModel = CreateViewModel(tool);
+        try
+        {
+            viewModel.ApkPath = apk;
+            viewModel.OutputFolder = Path.Combine(root, "output");
+            var run = viewModel.RunDecompileCommand.ExecuteAsync(null);
+            Assert.True(viewModel.IsRunning);
+            Assert.True(viewModel.CancelDecompileCommand.CanExecute(null));
+            viewModel.CancelDecompileCommand.Execute(null);
+            await run.WaitAsync(TimeSpan.FromSeconds(15));
+            Assert.False(viewModel.IsRunning);
+            Assert.False(viewModel.CancelDecompileCommand.CanExecute(null));
+            Assert.True(viewModel.RunDecompileCommand.CanExecute(null));
+        }
+        finally
+        {
+            File.Delete(tool);
+            File.Delete(apk);
+            Directory.Delete(root);
+        }
+    }
+
+    [Fact]
+    public async Task RunCommand_DoesNotOverwriteFilesInExistingOutputDirectory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "senda-output-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var tool = Path.Combine(root, "tool.jar");
+        var apk = Path.Combine(root, "sample.apk");
+        var output = Path.Combine(root, "output");
+        Directory.CreateDirectory(output);
+        var original = Path.Combine(output, "original.txt");
+        await File.WriteAllTextAsync(tool, "unused");
+        await File.WriteAllTextAsync(apk, "sample");
+        await File.WriteAllTextAsync(original, "conservar");
+        var dialogs = new TestDialogService();
+        using var viewModel = CreateViewModel(tool, dialogs);
+        try
+        {
+            viewModel.ApkPath = apk;
+            viewModel.OutputFolder = output;
+            await viewModel.RunDecompileCommand.ExecuteAsync(null);
+            Assert.False(viewModel.IsRunning);
+            Assert.Contains(dialogs.Errors, error => error.title == "Carpeta de salida ocupada");
+            Assert.Equal("conservar", await File.ReadAllTextAsync(original));
+        }
+        finally
+        {
+            File.Delete(tool);
+            File.Delete(apk);
+            File.Delete(original);
+            Directory.Delete(output);
+            Directory.Delete(root);
+        }
+    }
+
 
     [Fact]
     public async Task RunCommand_ShowsError_WhenOutputFolderIsInvalid()
@@ -79,10 +155,10 @@ public class DecompileViewModelTests
         }
     }
 
-    private static DecompileViewModel CreateViewModel(string apktoolPath, TestDialogService? dialogService = null)
+    private static DecompileViewModel CreateViewModel(string apktoolPath, TestDialogService? dialogService = null, TestFilePickerService? filePicker = null)
     {
         return new DecompileViewModel(
-            new TestFilePickerService(),
+            filePicker ?? new TestFilePickerService(),
             new TestSettingsService(apktoolPath),
             new ApktoolRunner(new TestSettingsService(apktoolPath)),
             dialogService ?? new TestDialogService(),
@@ -92,8 +168,9 @@ public class DecompileViewModelTests
 
     private sealed class TestFilePickerService : IFilePickerService
     {
+        public string? SelectedFolder { get; init; }
         public Task<string?> OpenFileAsync(string filter) => Task.FromResult<string?>(null);
-        public Task<string?> OpenFolderAsync(string? initialDirectory = null) => Task.FromResult<string?>(null);
+        public Task<string?> OpenFolderAsync(string? initialDirectory = null) => Task.FromResult(SelectedFolder);
     }
 
     private sealed class TestSettingsService : ISettingsService

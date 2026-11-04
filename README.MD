@@ -6,7 +6,7 @@ Visita el [sitio web de SendaAPK](https://sendaapk.wexdoc.chatgpt.site/).
 
 **Estado:** el producto no tiene una versión estable. El análisis no instala ni ejecuta el APK. Los permisos, las URL y los indicios del código no demuestran infección; ningún resultado garantiza que el archivo sea seguro. Defender depende de la configuración del sistema y puede no estar disponible en modo privado. La cuarentena no desinfecta el contenido.
 
-En la última comprobación en Windows con .NET 10 pasaron 42 pruebas del analizador local y 111 de la batería general. Esas cifras son una instantánea, no una garantía de funcionamiento. La verificación de firmas, el análisis ampliado de Ren'Py, la coordinación global de operaciones y la renovación de la interfaz están pendientes.
+En la última comprobación en Windows con .NET 10 pasaron 42 pruebas del analizador local y 116 de la batería general. Esas cifras son una instantánea, no una garantía de funcionamiento. La verificación de firmas, el análisis ampliado de Ren'Py, la coordinación global de operaciones y la renovación de la interfaz están pendientes.
 
 ## Desarrollar
 
@@ -22,6 +22,8 @@ dotnet test tests/unit/PulseAPK.Tests/PulseAPK.Tests.csproj
 Algunas funciones avanzadas requieren Java y herramientas externas configuradas por el usuario. Los APK personales, informes, credenciales y binarios de herramientas externas no deben añadirse al repositorio. Se conservan los directorios de datos `PulseAPK` para leer la configuración y los análisis de la instalación anterior.
 
 La cuarentena usa controles de bloqueo e identidad específicos de Windows y, por ahora, solo está disponible en ese sistema. Conserva una copia verificable y permite restaurarla sin sobrescribir un archivo existente; no modifica ni limpia el APK.
+
+Las operaciones principales permanecen visibles al cambiar de sección. Para evitar cierres accidentales, la ventana permanece abierta mientras hay tareas activas; el análisis local y la descompilación pueden cancelarse desde sus secciones. La descompilación requiere una carpeta de salida nueva.
 
 ## Sitio y patrocinio
 

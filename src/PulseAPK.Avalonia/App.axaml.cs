@@ -38,14 +38,24 @@ public partial class App : Application
         {
             var mainWindow = Services.GetRequiredService<MainWindow>();
             var localAnalysis = Services.GetRequiredService<LocalApkViewModel>();
+            var mainViewModel = Services.GetRequiredService<MainViewModel>();
+            var dialogs = Services.GetRequiredService<IDialogService>();
+            var closeWarningOpen = false;
             var args = desktop.Args ?? Array.Empty<string>();
             if (args.Length == 2 && args[0] == "--apk") localAnalysis.ApkPath = args[1];
-            mainWindow.Closing += (_, e) =>
+            mainWindow.Closing += async (_, e) =>
             {
-                if (!localAnalysis.Busy) return;
+                if (!mainViewModel.HasActiveTasks) return;
                 e.Cancel = true;
-                if (localAnalysis.CancelCommand.CanExecute(null)) localAnalysis.CancelCommand.Execute(null);
+                if (closeWarningOpen) return;
+                closeWarningOpen = true;
+                try
+                {
+                    await dialogs.ShowWarningAsync("Hay tareas en curso. Espera a que terminen o cancélalas desde su sección antes de cerrar.", "Tareas en curso");
+                }
+                finally { closeWarningOpen = false; }
             };
+            desktop.Exit += (_, _) => (Services as IDisposable)?.Dispose();
             desktop.MainWindow = mainWindow;
         }
 

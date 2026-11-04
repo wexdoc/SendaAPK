@@ -17,6 +17,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly LocalizationService _localizationService;
     private readonly ISystemService _systemService;
     private readonly ISettingsService _settingsService;
+    private readonly Dictionary<Type, object> _persistentViews = new();
     private bool _disposed;
 
     [ObservableProperty]
@@ -54,6 +55,32 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool IsSettingsEnabled => FeatureFlags.Settings;
     public bool IsAboutEnabled => FeatureFlags.About;
 
+    public bool HasActiveTasks => _persistentViews.Values.Any(IsTaskActive);
+    public string ActiveTasksText
+    {
+        get
+        {
+            var labels = _persistentViews.Values.Where(IsTaskActive).Select(view => view switch
+            {
+                LocalApkViewModel => "Análisis o gestión de archivos",
+                DecompileViewModel => "Descompilación",
+                BuildViewModel => "Compilación o firma",
+                PatchViewModel => "Parcheo",
+                _ => "Operación"
+            });
+            return "En curso: " + string.Join(", ", labels);
+        }
+    }
+
+    private static bool IsTaskActive(object view) => view switch
+    {
+        LocalApkViewModel local => local.Busy,
+        DecompileViewModel decompile => decompile.IsRunning,
+        BuildViewModel build => build.IsRunning,
+        PatchViewModel patch => patch.IsRunning,
+        _ => false
+    };
+
     public MainViewModel(
         IServiceProvider serviceProvider,
         LocalizationService localizationService,
@@ -74,7 +101,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToDecompile()
     {
         if (!CanNavigateToDecompile()) return;
-        SetCurrentView(Resolve<DecompileViewModel>());
+        SetCurrentView(ResolvePersistent<DecompileViewModel>());
         SelectedMenu = "Decompile";
     }
 
@@ -90,7 +117,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToBuild()
     {
         if (!CanNavigateToBuild()) return;
-        SetCurrentView(Resolve<BuildViewModel>());
+        SetCurrentView(ResolvePersistent<BuildViewModel>());
         SelectedMenu = "Build";
     }
 
@@ -98,7 +125,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToPatch()
     {
         if (!CanNavigateToPatch()) return;
-        SetCurrentView(Resolve<PatchViewModel>());
+        SetCurrentView(ResolvePersistent<PatchViewModel>());
         SelectedMenu = "Patch";
     }
 
@@ -106,7 +133,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToAnalyser()
     {
         if (!CanNavigateToAnalyser()) return;
-        var analyser = Resolve<LocalApkViewModel>();
+        var analyser = ResolvePersistent<LocalApkViewModel>();
         analyser.RefreshQuarantineCommand.Execute(null);
         SetCurrentView(analyser);
         SelectedMenu = "Analyser";
@@ -248,12 +275,30 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (CurrentView is IDisposable disposable)
+        if (CurrentView is IDisposable disposable && !_persistentViews.Values.Any(view => ReferenceEquals(view, CurrentView)))
         {
             disposable.Dispose();
         }
 
         CurrentView = nextView;
+    }
+
+    private T ResolvePersistent<T>() where T : class, INotifyPropertyChanged
+    {
+        if (_persistentViews.TryGetValue(typeof(T), out var existing)) return (T)existing;
+        var view = Resolve<T>();
+        _persistentViews.Add(typeof(T), view);
+        view.PropertyChanged += HandleTaskStateChanged;
+        return view;
+    }
+
+    private void HandleTaskStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(LocalApkViewModel.Busy) or nameof(DecompileViewModel.IsRunning) or null or "")
+        {
+            OnPropertyChanged(nameof(HasActiveTasks));
+            OnPropertyChanged(nameof(ActiveTasksText));
+        }
     }
 
     private T Resolve<T>() where T : notnull
@@ -273,6 +318,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         _localizationService.PropertyChanged -= HandleLocalizationChanged;
         _settingsService.SettingsChanged -= HandleSettingsChanged;
+        foreach (var view in _persistentViews.Values)
+        {
+            if (view is INotifyPropertyChanged observable) observable.PropertyChanged -= HandleTaskStateChanged;
+            if (view is IDisposable disposable) disposable.Dispose();
+        }
+        _persistentViews.Clear();
         _disposed = true;
     }
 

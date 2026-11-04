@@ -209,7 +209,12 @@
                 </Button>
             </StackPanel>
 
-            <Border Grid.Row="2"
+            <StackPanel Grid.Row="2" Spacing="8">
+            <TextBlock Text="{Binding ActiveTasksText}"
+                       IsVisible="{Binding HasActiveTasks}"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource CyberAccentBrush}" />
+            <Border
                     IsVisible="{Binding IsSupportWorkVisible}"
                     Background="#33141B2E"
                     BorderBrush="{DynamicResource CyberAccentBrush}"
@@ -224,6 +229,7 @@
                                FontWeight="SemiBold"/>
                 </Button>
             </Border>
+            </StackPanel>
             </Grid>
         </Border>
 

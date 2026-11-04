@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.Generic;
@@ -52,6 +53,7 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunDecompileCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelDecompileCommand))]
     private bool _isRunning;
 
     private bool _isConsolePreviewActive = true;
@@ -105,6 +107,10 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
                 OutputFolder = apkDerivedOutputFolder;
             }
         }
+        else if (string.Equals(OutputFolder, PathUtils.GetDefaultDecompilePath(), StringComparison.OrdinalIgnoreCase))
+        {
+            OutputFolder = GetWorkspaceOutputFolder(value);
+        }
 
         UpdateCommandPreview();
         RunDecompileCommand.NotifyCanExecuteChanged();
@@ -126,13 +132,20 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
         }
         else
         {
-            OutputFolder = PathUtils.GetDefaultDecompilePath();
+            OutputFolder = GetWorkspaceOutputFolder(ApkPath);
         }
 
         UpdateCommandPreview();
     }
 
     partial void OnOutputFolderChanged(string? value) => UpdateCommandPreview();
+
+    private static string GetWorkspaceOutputFolder(string apkPath)
+    {
+        var root = PathUtils.GetDefaultDecompilePath();
+        var name = Path.GetFileNameWithoutExtension(apkPath);
+        return string.IsNullOrWhiteSpace(name) ? root : Path.Combine(root, name);
+    }
 
     [RelayCommand]
     private async Task BrowseApk()
@@ -164,7 +177,8 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
 
         if (folder != null)
         {
-            OutputFolder = folder;
+            var projectName = Path.GetFileNameWithoutExtension(ApkPath);
+            OutputFolder = Path.Combine(folder, string.IsNullOrWhiteSpace(projectName) ? "proyecto-apk" : projectName);
         }
     }
 
@@ -242,36 +256,24 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var forceOverwrite = false;
-
         _appLogService?.LogInfo(
             "Decompile",
             $"Decompile requested. timestamp={DateTimeOffset.UtcNow:O}; apkFile={Path.GetFileName(ApkPath)}; outputDir={normalizedOutputDir}; decodeResources={DecodeResources}; decodeSources={DecodeSources}; keepOriginalManifest={KeepOriginalManifest}; extractToApkFolder={ExtractToApkFolder}");
 
         if (Directory.Exists(normalizedOutputDir))
         {
-            var isEmpty = !Directory.EnumerateFileSystemEntries(normalizedOutputDir).Any();
-
-            if (!isEmpty)
-            {
-                var result = await _dialogService.ShowQuestionAsync($"The output directory '{normalizedOutputDir}' already exists and is not empty. Overwrite its contents?", "Confirm overwrite");
-
-                if (!result)
-                {
-                    return;
-                }
-            }
-
-            forceOverwrite = true;
+            await _dialogService.ShowErrorAsync("La carpeta de salida ya existe. Elige una ruta nueva para conservar su contenido.", "Carpeta de salida ocupada");
+            return;
         }
 
         IsRunning = true;
         var cancellationTokenSource = new CancellationTokenSource();
         _activeDecompileCancellationTokenSource = cancellationTokenSource;
+        CancelDecompileCommand.NotifyCanExecuteChanged();
 
         try
         {
-            var decompileResult = await _apktoolRunner.RunDecompileAsync(ApkPath, normalizedOutputDir, DecodeResources, DecodeSources, KeepOriginalManifest, forceOverwrite, cancellationTokenSource.Token);
+            var decompileResult = await _apktoolRunner.RunDecompileAsync(ApkPath, normalizedOutputDir, DecodeResources, DecodeSources, KeepOriginalManifest, forceOverwrite: false, cancellationTokenSource.Token);
             var exitCode = decompileResult.ExitCode;
 
             if (exitCode == 0)
@@ -287,7 +289,7 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
-            AppendLog("Decompile canceled.");
+            AppendLog("Descompilación cancelada.");
         }
         catch (Exception ex)
         {
@@ -305,6 +307,16 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
             IsRunning = false;
             RunDecompileCommand.NotifyCanExecuteChanged();
         }
+    }
+
+    private bool CanCancelDecompile() => IsRunning && _activeDecompileCancellationTokenSource is { IsCancellationRequested: false };
+
+    [RelayCommand(CanExecute = nameof(CanCancelDecompile))]
+    private void CancelDecompile()
+    {
+        _activeDecompileCancellationTokenSource?.Cancel();
+        CancelDecompileCommand.NotifyCanExecuteChanged();
+        AppendLog("Cancelando descompilación; espera a que se detenga la herramienta.");
     }
 
     private void OnOutputDataReceived(string message)

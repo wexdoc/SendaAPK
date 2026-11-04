@@ -1,3 +1,4 @@
+<!-- Modified for SendaAPK (2026); original work remains credited in NOTICE. -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:PulseAPK.Core.ViewModels;assembly=PulseAPK.Core"
@@ -48,6 +49,10 @@
                             FontSize="14"
                             VerticalContentAlignment="Center"
                             Padding="16,0" />
+                    <Button Content="Cancelar"
+                            Command="{Binding CancelDecompileCommand}"
+                            IsVisible="{Binding IsRunning}"
+                            MinWidth="120" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -74,6 +79,8 @@
                            FontWeight="SemiBold" />
                 <TextBlock Text="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[OutputFolder]}"
                            FontWeight="SemiBold" />
+                <TextBlock Text="Elige una carpeta y se creará dentro un proyecto nuevo con el nombre del APK."
+                           Classes="helper-text" TextWrapping="Wrap" />
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                     <TextBox Text="{Binding OutputFolder}" />
                     <StackPanel Grid.Column="1" Spacing="6">
