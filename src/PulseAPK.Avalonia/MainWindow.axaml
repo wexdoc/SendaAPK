@@ -74,7 +74,16 @@
                     </StackPanel>
                 </ScrollViewer>
                 <StackPanel Grid.Row="1" Spacing="10">
-                    <TextBlock Text="{Binding ActiveTasksText}" IsVisible="{Binding HasActiveTasks}" TextWrapping="Wrap" Foreground="{DynamicResource CyberAccentBrush}" FontSize="12" />
+                    <Button Content="{Binding PendingApksText}" Command="{Binding OpenPendingApkCommand}" IsVisible="{Binding HasPendingApks}" />
+                    <Button Content="Revisar tarea interrumpida" Command="{Binding ReviewInterruptedCommand}" IsVisible="{Binding HasInterruptedOperations}" />
+                    <Button Content="Reanudar cola tras revisar" Command="{Binding ResumeQueueAfterReviewCommand}" IsVisible="{Binding IsQueuePaused}" />
+                    <TextBlock Text="{Binding RecoveryNotice}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource CyberHelperTextBrush}" />
+                    <ScrollViewer IsVisible="{Binding HasOperationHistory}" MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="5">
+                            <TextBlock Text="TAREAS Y COLA" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource CyberAccentBrush}" />
+                            <TextBlock Text="{Binding OperationQueueText}" TextWrapping="Wrap" Foreground="{DynamicResource CyberConsoleForegroundBrush}" FontSize="11" />
+                        </StackPanel>
+                    </ScrollViewer>
                     <Border BorderBrush="{DynamicResource CyberCardBorderBrush}" BorderThickness="1" CornerRadius="9" Padding="12">
                         <StackPanel Spacing="4">
                             <TextBlock Text="VERSIÓN PRELIMINAR" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource CyberAccentBrush}" />

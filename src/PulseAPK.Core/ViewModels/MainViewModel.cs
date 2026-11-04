@@ -17,7 +17,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly LocalizationService _localizationService;
     private readonly ISystemService _systemService;
     private readonly ISettingsService _settingsService;
+    private readonly OperationCoordinator _operations;
+    private readonly IDispatcherService? _dispatcher;
     private readonly Dictionary<Type, object> _persistentViews = new();
+    private readonly Queue<string> _pendingApks = new();
     private bool _disposed;
 
     [ObservableProperty]
@@ -54,6 +57,116 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool IsDeviceToolsEnabled => FeatureFlags.DeviceTools && _settingsService.Settings.IsDeviceToolsEnabled;
     public bool IsSettingsEnabled => FeatureFlags.Settings;
     public bool IsAboutEnabled => FeatureFlags.About;
+    public bool HasPendingApks => _pendingApks.Count > 0;
+    public string PendingApksText => $"Abrir siguiente APK ({_pendingApks.Count})";
+    public bool HasInterruptedOperations => _operations.Snapshot().Any(x => x.State is "Interrumpida" or "Terminación no confirmada");
+    public bool IsQueuePaused => _operations.IsPaused;
+    [RelayCommand]
+    private void ResumeQueueAfterReview()
+    {
+        RecoveryNotice = "Reanudaste la cola tras revisar los procesos pendientes.";
+        _operations.ResumeAfterReview();
+    }
+    [ObservableProperty] private string _recoveryNotice = "";
+
+    private bool CanReviewInterrupted() => HasInterruptedOperations && !_operations.HasWork && !_persistentViews.Values.Any(IsTaskActive);
+
+    [RelayCommand(CanExecute = nameof(CanReviewInterrupted))]
+    private void ReviewInterrupted()
+    {
+        if (!CanReviewInterrupted()) return;
+        var record = _operations.Snapshot().First(x => x.State is "Interrumpida" or "Terminación no confirmada");
+        var request = record.Request;
+        try
+        {
+            switch (request?.Kind)
+            {
+                case "analysis":
+                    NavigateToAnalyser();
+                    var analysis = ResolvePersistent<LocalApkViewModel>();
+                    analysis.ApkPath = request.InputPath;
+                    analysis.IncludeLibraries = request.IncludeLibraries;
+                    analysis.Status = "Tarea interrumpida recuperada. Comprueba el archivo y pulsa Iniciar análisis si deseas repetirla.";
+                    break;
+                case "decompile":
+                    NavigateToDecompile();
+                    var decompile = ResolvePersistent<DecompileViewModel>();
+                    decompile.ApkPath = request.InputPath;
+                    decompile.ExtractToApkFolder = request.ExtractToApkFolder;
+                    decompile.OutputFolder = request.OutputPath;
+                    decompile.DecodeResources = request.DecodeResources;
+                    decompile.DecodeSources = request.DecodeSources;
+                    decompile.KeepOriginalManifest = request.KeepOriginalManifest;
+                    decompile.ConsoleLog = "Tarea interrumpida recuperada. Comprueba las opciones y pulsa Ejecutar para repetirla.";
+                    break;
+                case "build":
+                    NavigateToBuild();
+                    var build = ResolvePersistent<BuildViewModel>();
+                    build.ProjectPath = request.InputPath;
+                    build.OutputFolderPath = Path.GetDirectoryName(request.OutputPath) ?? "";
+                    build.OutputApkName = Path.GetFileName(request.OutputPath);
+                    build.SignApk = request.SignApk;
+                    build.UseAapt2 = request.UseAapt2;
+                    build.ConsoleLog = "Tarea interrumpida recuperada. Comprueba las opciones y vuelve a compilar si lo deseas.";
+                    break;
+                case "patch":
+                    NavigateToPatch();
+                    var patch = ResolvePersistent<PatchViewModel>();
+                    patch.ApkPath = request.InputPath;
+                    patch.OutputFolderPath = Path.GetDirectoryName(request.OutputPath) ?? "";
+                    patch.OutputApkName = Path.GetFileName(request.OutputPath);
+                    patch.SignApk = request.SignApk;
+                    patch.DecodeResources = request.DecodeResources;
+                    patch.DecodeSources = request.DecodeSources;
+                    patch.UseAapt2ForBuild = request.UseAapt2;
+                    patch.InjectLibForAllArchitectures = request.InjectForAllArchitectures;
+                    patch.SkipDexValidation = request.SkipDexValidation;
+                    patch.SelectedScriptInjectionOption = patch.ScriptInjectionOptions.First(x => (int)x.Profile == request.ScriptProfile);
+                    patch.SelectedDexPreservationOption = patch.DexPreservationOptions.First(x => (int)x.Mode == request.DexMode);
+                    patch.ConsoleLog = "Tarea interrumpida recuperada. Revisa las opciones; las confirmaciones se solicitarán de nuevo.";
+                    break;
+                default:
+                    NavigateToAnalyser();
+                    ResolvePersistent<LocalApkViewModel>().Status = "Revisa Cuarentena y el archivo original antes de repetir la operación interrumpida.";
+                    break;
+            }
+            RecoveryNotice = record.State == "Terminación no confirmada"
+                ? "No se confirmó que terminaran todos los procesos. Revísalos antes de repetir la tarea."
+                : "Revisa la tarea recuperada antes de iniciarla.";
+            _operations.MarkReviewed(record.Id);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or NotSupportedException or IOException)
+        {
+            RecoveryNotice = "No se pudieron recuperar las opciones: " + ex.Message;
+        }
+        RefreshOperationStatus();
+    }
+
+    public void QueueExternalApk(string path)
+    {
+        _pendingApks.Enqueue(path);
+        OnPropertyChanged(nameof(HasPendingApks));
+        OnPropertyChanged(nameof(PendingApksText));
+        OpenPendingApkCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanOpenPendingApk() => HasPendingApks && !_operations.HasWork && !_persistentViews.Values.Any(IsTaskActive);
+    [RelayCommand(CanExecute = nameof(CanOpenPendingApk))]
+    private void OpenPendingApk()
+    {
+        if (!CanOpenPendingApk()) return;
+        var path = _pendingApks.Dequeue();
+        NavigateToAnalyser();
+        ResolvePersistent<LocalApkViewModel>().ApkPath = path;
+        OnPropertyChanged(nameof(HasPendingApks));
+        OnPropertyChanged(nameof(PendingApksText));
+        OpenPendingApkCommand.NotifyCanExecuteChanged();
+    }
+    public bool HasOperationHistory => _operations.PersistenceWarning is not null || _operations.Snapshot().Any(x => x.State is "En curso" or "En espera" or "Cancelando" or "Interrumpida" or "Terminación no confirmada");
+    public string OperationQueueText => string.Join("\n\n", _operations.Snapshot()
+        .Where(x => x.State is "En curso" or "En espera" or "Cancelando" or "Interrumpida" or "Terminación no confirmada")
+        .Select(x => $"{x.Name} · {x.State}" + (x.Started is { } start && x.Finished is null ? $" · {DateTimeOffset.Now - start:hh\\:mm\\:ss}" : "") + $"\n{x.Stage}")
+        .Concat(_operations.PersistenceWarning is { } warning ? new[] { warning } : Array.Empty<string>()));
 
     public bool HasActiveTasks => _persistentViews.Values.Any(IsTaskActive);
     public string ActiveTasksText
@@ -66,6 +179,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 DecompileViewModel => "Descompilación",
                 BuildViewModel => "Compilación o firma",
                 PatchViewModel => "Parcheo",
+                SettingsViewModel => "Descarga de herramientas",
                 _ => "Operación"
             });
             return "En curso: " + string.Join(", ", labels);
@@ -78,6 +192,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         DecompileViewModel decompile => decompile.IsRunning,
         BuildViewModel build => build.IsRunning,
         PatchViewModel patch => patch.IsRunning,
+        SettingsViewModel settings => settings.IsDownloadingTools,
         _ => false
     };
 
@@ -85,16 +200,36 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IServiceProvider serviceProvider,
         LocalizationService localizationService,
         ISystemService systemService,
-        ISettingsService settingsService)
+        ISettingsService settingsService,
+        OperationCoordinator? operations = null)
     {
         _serviceProvider = serviceProvider;
         _localizationService = localizationService;
         _systemService = systemService;
         _settingsService = settingsService;
+        _operations = operations ?? new OperationCoordinator(null);
+        _dispatcher = serviceProvider.GetService(typeof(IDispatcherService)) as IDispatcherService;
+        _operations.Changed += HandleOperationsChanged;
         WindowTitle = "SendaAPK · Análisis local de APK";
         _localizationService.PropertyChanged += HandleLocalizationChanged;
         _settingsService.SettingsChanged += HandleSettingsChanged;
         SetInitialView();
+    }
+
+    public void RefreshOperationStatus()
+    {
+        OnPropertyChanged(nameof(HasOperationHistory));
+        OnPropertyChanged(nameof(OperationQueueText));
+        OnPropertyChanged(nameof(HasInterruptedOperations));
+        OnPropertyChanged(nameof(IsQueuePaused));
+        OpenPendingApkCommand.NotifyCanExecuteChanged();
+        ReviewInterruptedCommand.NotifyCanExecuteChanged();
+    }
+
+    private void HandleOperationsChanged(object? sender, EventArgs e)
+    {
+        if (_dispatcher is not null && !_dispatcher.CheckAccess()) _ = _dispatcher.InvokeAsync(RefreshOperationStatus);
+        else RefreshOperationStatus();
     }
 
     [RelayCommand(CanExecute = nameof(CanNavigateToDecompile))]
@@ -109,7 +244,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToSettings()
     {
         if (!CanNavigateToSettings()) return;
-        SetCurrentView(Resolve<SettingsViewModel>());
+        SetCurrentView(ResolvePersistent<SettingsViewModel>());
         SelectedMenu = "Settings";
     }
 
@@ -294,10 +429,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void HandleTaskStateChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(LocalApkViewModel.Busy) or nameof(DecompileViewModel.IsRunning) or null or "")
+        if (e.PropertyName is nameof(LocalApkViewModel.Busy) or nameof(DecompileViewModel.IsRunning) or nameof(SettingsViewModel.IsDownloadingTools) or null or "")
         {
             OnPropertyChanged(nameof(HasActiveTasks));
             OnPropertyChanged(nameof(ActiveTasksText));
+            OpenPendingApkCommand.NotifyCanExecuteChanged();
+            ReviewInterruptedCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -318,6 +455,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         _localizationService.PropertyChanged -= HandleLocalizationChanged;
         _settingsService.SettingsChanged -= HandleSettingsChanged;
+        _operations.Changed -= HandleOperationsChanged;
         foreach (var view in _persistentViews.Values)
         {
             if (view is INotifyPropertyChanged observable) observable.PropertyChanged -= HandleTaskStateChanged;

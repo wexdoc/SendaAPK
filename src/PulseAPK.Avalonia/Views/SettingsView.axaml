@@ -62,10 +62,11 @@
                     <TextBlock Text="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[ApktoolPath]}"
                                FontWeight="SemiBold" />
                     <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                        <TextBox Text="{Binding ApktoolPath}" />
+                        <TextBox Text="{Binding ApktoolPath}" IsEnabled="{Binding CanModifyToolPaths}" />
                         <Button Grid.Column="1"
                                 Content="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[Browse]}"
                                 Command="{Binding BrowseApktoolCommand}"
+                                IsEnabled="{Binding CanModifyToolPaths}"
                                 Width="110" />
                         <Button Grid.Column="2"
                                 Content="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[DownloadApktoolButton]}"
@@ -76,16 +77,19 @@
                     <TextBlock Text="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[UbersignPath]}"
                                FontWeight="SemiBold" />
                     <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                        <TextBox Text="{Binding UbersignPath}" />
+                        <TextBox Text="{Binding UbersignPath}" IsEnabled="{Binding CanModifyToolPaths}" />
                         <Button Grid.Column="1"
                                 Content="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[Browse]}"
                                 Command="{Binding BrowseUbersignCommand}"
+                                IsEnabled="{Binding CanModifyToolPaths}"
                                 Width="110" />
                         <Button Grid.Column="2"
                                 Content="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[DownloadUbersignerButton]}"
                                 Command="{Binding DownloadUbersignerCommand}"
                                 MinWidth="180" />
                     </Grid>
+                    <TextBlock Text="{Binding DownloadStatus}" TextWrapping="Wrap" Classes="helper-text" />
+                    <Button Content="Cancelar descarga" Command="{Binding CancelDownloadCommand}" IsVisible="{Binding IsDownloadingTools}" HorizontalAlignment="Left" />
                 </StackPanel>
             </Border>
 
@@ -99,10 +103,11 @@
                     <TextBlock Text="Ruta de ADB"
                                FontWeight="SemiBold" />
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                        <TextBox Text="{Binding AdbPath}" Watermark="{Binding AdbPathWatermark}" />
+                        <TextBox Text="{Binding AdbPath}" Watermark="{Binding AdbPathWatermark}" IsEnabled="{Binding CanModifyToolPaths}" />
                         <Button Grid.Column="1"
                                 Content="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[Browse]}"
                                 Command="{Binding BrowseAdbCommand}"
+                                IsEnabled="{Binding CanModifyToolPaths}"
                                 Width="110" />
                     </Grid>
                 </StackPanel>

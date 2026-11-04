@@ -71,24 +71,258 @@ public class DecompileViewModelTests
         Directory.CreateDirectory(root);
         var tool = Path.Combine(root, "slow-tool.cmd");
         var apk = Path.Combine(root, "sample.apk");
-        await File.WriteAllTextAsync(tool, "@echo off\r\nping -n 60 127.0.0.1 >nul\r\n");
+        var started = Path.Combine(root, "started.marker");
+        var finished = Path.Combine(root, "finished.marker");
+        await File.WriteAllTextAsync(tool, "@echo off\r\necho started > \"%~dp0started.marker\"\r\nping -n 60 127.0.0.1 >nul\r\necho finished > \"%~dp0finished.marker\"\r\n");
         await File.WriteAllTextAsync(apk, "sample");
         using var viewModel = CreateViewModel(tool);
+        Task? run = null;
         try
         {
             viewModel.ApkPath = apk;
             viewModel.OutputFolder = Path.Combine(root, "output");
-            var run = viewModel.RunDecompileCommand.ExecuteAsync(null);
+            run = viewModel.RunDecompileCommand.ExecuteAsync(null);
             Assert.True(viewModel.IsRunning);
             Assert.True(viewModel.CancelDecompileCommand.CanExecute(null));
+            await WaitForFileAsync(started);
             viewModel.CancelDecompileCommand.Execute(null);
             await run.WaitAsync(TimeSpan.FromSeconds(15));
             Assert.False(viewModel.IsRunning);
             Assert.False(viewModel.CancelDecompileCommand.CanExecute(null));
             Assert.True(viewModel.RunDecompileCommand.CanExecute(null));
+            Assert.False(File.Exists(finished));
         }
         finally
         {
+            if (viewModel.IsRunning && run is not null)
+            {
+                viewModel.CancelDecompileCommand.Execute(null);
+                await run.WaitAsync(TimeSpan.FromSeconds(15));
+            }
+            File.Delete(tool);
+            File.Delete(apk);
+            File.Delete(started);
+            File.Delete(finished);
+            Directory.Delete(root);
+        }
+    }
+
+    [Fact]
+    public async Task QueuedDecompileUsesCapturedInputOptionsAndOutput()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var root = Path.Combine(Path.GetTempPath(), "senda cola á " + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var tool = Path.Combine(root, "tool.cmd");
+        var firstApk = Path.Combine(root, "primero con espacios.apk");
+        var secondApk = Path.Combine(root, "segundo.apk");
+        var firstOutput = Path.Combine(root, "salida uno");
+        var secondOutput = Path.Combine(root, "salida dos");
+        await File.WriteAllTextAsync(tool, "@echo off\r\nchcp 65001 >nul\r\nmkdir \"%~4\"\r\necho %* > \"%~4\\argumentos.txt\"\r\n");
+        await File.WriteAllTextAsync(firstApk, "first");
+        await File.WriteAllTextAsync(secondApk, "second");
+        var coordinator = new OperationCoordinator(null);
+        using var blocker = coordinator.Enqueue("Tarea previa");
+        await blocker.WaitAsync();
+        using var viewModel = CreateViewModel(tool, operations: coordinator);
+        Task? run = null;
+        try
+        {
+            viewModel.ApkPath = firstApk;
+            viewModel.OutputFolder = firstOutput;
+            viewModel.DecodeResources = false;
+            viewModel.DecodeSources = true;
+            viewModel.KeepOriginalManifest = true;
+            run = viewModel.RunDecompileCommand.ExecuteAsync(null);
+            Assert.Contains(coordinator.Snapshot(), x => x.Name.StartsWith("Descompilación · ", StringComparison.Ordinal) && x.State == "En espera");
+
+            viewModel.ApkPath = secondApk;
+            viewModel.OutputFolder = secondOutput;
+            viewModel.DecodeResources = true;
+            viewModel.DecodeSources = false;
+            viewModel.KeepOriginalManifest = false;
+            blocker.Complete();
+            blocker.Dispose();
+            await run.WaitAsync(TimeSpan.FromSeconds(15));
+
+            var arguments = await File.ReadAllTextAsync(Path.Combine(firstOutput, "argumentos.txt"));
+            Assert.Contains(firstApk, arguments, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(secondApk, arguments, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("\"-r\"", arguments, StringComparison.Ordinal);
+            Assert.Contains("\"-m\"", arguments, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"-s\"", arguments, StringComparison.Ordinal);
+            Assert.False(Directory.Exists(secondOutput));
+            Assert.Equal("first", await File.ReadAllTextAsync(firstApk));
+        }
+        finally
+        {
+            if (viewModel.IsRunning && run is not null)
+            {
+                viewModel.CancelDecompileCommand.Execute(null);
+                await run.WaitAsync(TimeSpan.FromSeconds(15));
+            }
+            File.Delete(Path.Combine(firstOutput, "argumentos.txt"));
+            if (Directory.Exists(firstOutput)) Directory.Delete(firstOutput);
+            File.Delete(tool);
+            File.Delete(firstApk);
+            File.Delete(secondApk);
+            Directory.Delete(root);
+        }
+    }
+
+    [Fact]
+    public async Task OutputCreatedWhileQueuedIsNotOverwritten()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var root = Path.Combine(Path.GetTempPath(), "senda-colision-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var tool = Path.Combine(root, "tool.cmd");
+        var apk = Path.Combine(root, "sample.apk");
+        var output = Path.Combine(root, "resultado");
+        var sentinel = Path.Combine(output, "original.txt");
+        var marker = Path.Combine(root, "tool-started.marker");
+        await File.WriteAllTextAsync(tool, "@echo off\r\necho started > \"%~dp0tool-started.marker\"\r\n");
+        await File.WriteAllTextAsync(apk, "original");
+        var coordinator = new OperationCoordinator(null);
+        using var blocker = coordinator.Enqueue("Tarea previa");
+        await blocker.WaitAsync();
+        var dialogs = new TestDialogService();
+        using var viewModel = CreateViewModel(tool, dialogs, operations: coordinator);
+        Task? run = null;
+        try
+        {
+            viewModel.ApkPath = apk;
+            viewModel.OutputFolder = output;
+            run = viewModel.RunDecompileCommand.ExecuteAsync(null);
+            Assert.Contains(coordinator.Snapshot(), x => x.Name.StartsWith("Descompilación · ", StringComparison.Ordinal) && x.State == "En espera");
+            Directory.CreateDirectory(output);
+            await File.WriteAllTextAsync(sentinel, "conservar");
+            blocker.Complete();
+            blocker.Dispose();
+            await run.WaitAsync(TimeSpan.FromSeconds(15));
+
+            Assert.Equal("conservar", await File.ReadAllTextAsync(sentinel));
+            Assert.Equal("original", await File.ReadAllTextAsync(apk));
+            Assert.False(File.Exists(marker));
+            Assert.Contains(dialogs.Errors, e => e.message.Contains("ya existe", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            if (viewModel.IsRunning && run is not null)
+            {
+                viewModel.CancelDecompileCommand.Execute(null);
+                await run.WaitAsync(TimeSpan.FromSeconds(15));
+            }
+            File.Delete(sentinel);
+            if (Directory.Exists(output)) Directory.Delete(output);
+            File.Delete(marker);
+            File.Delete(tool);
+            File.Delete(apk);
+            Directory.Delete(root);
+        }
+    }
+
+    [Fact]
+    public async Task CancellingQueuedDecompileNeverStartsTheTool()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var root = Path.Combine(Path.GetTempPath(), "senda-cola-cancelada-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var tool = Path.Combine(root, "tool.cmd");
+        var apk = Path.Combine(root, "sample.apk");
+        var output = Path.Combine(root, "resultado");
+        var marker = Path.Combine(root, "tool-started.marker");
+        await File.WriteAllTextAsync(tool, "@echo off\r\necho started > \"%~dp0tool-started.marker\"\r\n");
+        await File.WriteAllTextAsync(apk, "original");
+        var coordinator = new OperationCoordinator(null);
+        using var blocker = coordinator.Enqueue("Tarea previa");
+        await blocker.WaitAsync();
+        using var viewModel = CreateViewModel(tool, operations: coordinator);
+        Task? run = null;
+        try
+        {
+            viewModel.ApkPath = apk;
+            viewModel.OutputFolder = output;
+            run = viewModel.RunDecompileCommand.ExecuteAsync(null);
+            Assert.Contains(coordinator.Snapshot(), x => x.Name.StartsWith("Descompilación · ", StringComparison.Ordinal) && x.State == "En espera");
+            Assert.True(viewModel.CancelDecompileCommand.CanExecute(null));
+            viewModel.CancelDecompileCommand.Execute(null);
+            await run.WaitAsync(TimeSpan.FromSeconds(15));
+
+            Assert.False(viewModel.IsRunning);
+            Assert.True(viewModel.RunDecompileCommand.CanExecute(null));
+            Assert.False(File.Exists(marker));
+            Assert.False(Directory.Exists(output));
+            Assert.Equal("original", await File.ReadAllTextAsync(apk));
+            Assert.Contains(coordinator.Snapshot(), x => x.Name.StartsWith("Descompilación · ", StringComparison.Ordinal) && x.State == "Cancelada");
+        }
+        finally
+        {
+            if (viewModel.IsRunning && run is not null)
+            {
+                viewModel.CancelDecompileCommand.Execute(null);
+                await run.WaitAsync(TimeSpan.FromSeconds(15));
+            }
+            File.Delete(marker);
+            File.Delete(tool);
+            File.Delete(apk);
+            Directory.Delete(root);
+        }
+    }
+
+    [Fact]
+    public async Task OutputCreatedDuringDecompilationPreservesBothExistingAndGeneratedFiles()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var root = Path.Combine(Path.GetTempPath(), "senda-publicacion-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var tool = Path.Combine(root, "tool.cmd");
+        var apk = Path.Combine(root, "sample.apk");
+        var output = Path.Combine(root, "resultado");
+        var sentinel = Path.Combine(output, "original.txt");
+        var started = Path.Combine(root, "started.marker");
+        var release = Path.Combine(root, "release.marker");
+        var script = "@echo off\r\nmkdir \"%~4\"\r\necho generado > \"%~4\\generated.txt\"\r\necho started > \"%~dp0started.marker\"\r\n" +
+            ":again\r\nif exist \"%~dp0release.marker\" goto done\r\nping -n 2 127.0.0.1 >nul\r\ngoto again\r\n:done\r\nexit /b 0\r\n";
+        await File.WriteAllTextAsync(tool, script);
+        await File.WriteAllTextAsync(apk, "original");
+        var dialogs = new TestDialogService();
+        using var viewModel = CreateViewModel(tool, dialogs);
+        Task? run = null;
+        try
+        {
+            viewModel.ApkPath = apk;
+            viewModel.OutputFolder = output;
+            run = viewModel.RunDecompileCommand.ExecuteAsync(null);
+            await WaitForFileAsync(started);
+
+            Directory.CreateDirectory(output);
+            await File.WriteAllTextAsync(sentinel, "conservar");
+            await File.WriteAllTextAsync(release, "continuar");
+            await run.WaitAsync(TimeSpan.FromSeconds(15));
+
+            Assert.Equal("conservar", await File.ReadAllTextAsync(sentinel));
+            Assert.Equal("original", await File.ReadAllTextAsync(apk));
+            var temporary = Assert.Single(Directory.GetDirectories(root, ".sendaapk-*", SearchOption.TopDirectoryOnly));
+            Assert.Contains("generado", await File.ReadAllTextAsync(Path.Combine(temporary, "generated.txt")));
+            Assert.Contains(dialogs.Errors, e => e.message.Contains("conserv", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            if (viewModel.IsRunning && run is not null)
+            {
+                viewModel.CancelDecompileCommand.Execute(null);
+                await run.WaitAsync(TimeSpan.FromSeconds(15));
+            }
+            foreach (var temporary in Directory.GetDirectories(root, ".sendaapk-*", SearchOption.TopDirectoryOnly))
+            {
+                File.Delete(Path.Combine(temporary, "generated.txt"));
+                Directory.Delete(temporary);
+            }
+            File.Delete(sentinel);
+            if (Directory.Exists(output)) Directory.Delete(output);
+            File.Delete(started);
+            File.Delete(release);
             File.Delete(tool);
             File.Delete(apk);
             Directory.Delete(root);
@@ -155,7 +389,17 @@ public class DecompileViewModelTests
         }
     }
 
-    private static DecompileViewModel CreateViewModel(string apktoolPath, TestDialogService? dialogService = null, TestFilePickerService? filePicker = null)
+    private static async Task WaitForFileAsync(string path)
+    {
+        for (var i = 0; i < 200; i++)
+        {
+            if (File.Exists(path)) return;
+            await Task.Delay(50);
+        }
+        throw new TimeoutException($"La herramienta de prueba no creó {path}.");
+    }
+
+    private static DecompileViewModel CreateViewModel(string apktoolPath, TestDialogService? dialogService = null, TestFilePickerService? filePicker = null, OperationCoordinator? operations = null)
     {
         return new DecompileViewModel(
             filePicker ?? new TestFilePickerService(),
@@ -163,7 +407,8 @@ public class DecompileViewModelTests
             new ApktoolRunner(new TestSettingsService(apktoolPath)),
             dialogService ?? new TestDialogService(),
             new ImmediateDispatcherService(),
-            new TestSystemService());
+            new TestSystemService(),
+            operations: operations);
     }
 
     private sealed class TestFilePickerService : IFilePickerService

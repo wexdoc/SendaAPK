@@ -34,6 +34,7 @@
                 <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center">
                     <Button Content="{Binding Source={x:Static services:LocalizationService.Instance}, Path=[Browse]}"
                             Command="{Binding BrowseProjectCommand}"
+                            IsEnabled="{Binding !IsRunning}"
                             MinWidth="120"
                             Height="38"
                             FontSize="14"
@@ -47,11 +48,12 @@
                             FontSize="14"
                             VerticalContentAlignment="Center"
                             Padding="16,0" />
+                    <Button Content="Cancelar" Command="{Binding CancelBuildCommand}" IsVisible="{Binding IsRunning}" />
                 </StackPanel>
             </Grid>
         </Border>
 
-        <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="16">
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="16" IsEnabled="{Binding !IsRunning}">
             <StackPanel Spacing="8">
                 <TextBlock Text="OPCIONES"
                            Foreground="{DynamicResource CyberAccentBrush}"

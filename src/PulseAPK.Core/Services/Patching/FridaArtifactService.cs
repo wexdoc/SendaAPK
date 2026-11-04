@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using System.Net.Http.Headers;
 using System.Text.Json;
 using PulseAPK.Core.Abstractions;
@@ -61,6 +62,7 @@ public sealed class FridaArtifactService : IFridaArtifactService
             await DownloadAndCacheGadgetAsync(fridaArchitecture, cachePath, cancellationToken);
             return (cachePath, null);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             return (null, $"Frida gadget for ABI '{architecture}' was not found in tool cache: '{cachePath}'. Automatic download failed: {ex.Message}");

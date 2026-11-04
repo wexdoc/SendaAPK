@@ -65,6 +65,7 @@ public partial class PatchViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunPatchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelPatchCommand))]
     private bool _isRunning;
 
     private readonly IFilePickerService _filePickerService;
@@ -73,6 +74,8 @@ public partial class PatchViewModel : ObservableObject
     private readonly IDialogService _dialogService;
     private readonly LocalizationService _localizationService;
     private readonly ISystemService _systemService;
+    private readonly OperationCoordinator _operations;
+    private OperationTicket? _activePatch;
 
     public bool IsHintVisible => string.IsNullOrWhiteSpace(ApkPath);
 
@@ -88,7 +91,8 @@ public partial class PatchViewModel : ObservableObject
         IPatchPipelineService patchPipelineService,
         IDialogService dialogService,
         LocalizationService localizationService,
-        ISystemService systemService)
+        ISystemService systemService,
+        OperationCoordinator? operations = null)
     {
         _filePickerService = filePickerService;
         _settingsService = settingsService;
@@ -96,6 +100,7 @@ public partial class PatchViewModel : ObservableObject
         _dialogService = dialogService;
         _localizationService = localizationService;
         _systemService = systemService;
+        _operations = operations ?? new OperationCoordinator(null);
 
         DexPreservationOptions =
         [
@@ -249,13 +254,8 @@ public partial class PatchViewModel : ObservableObject
             }
         }
 
-        IsRunning = true;
-        SetConsoleLog(L("PatchLogStartingPipeline"));
-
-        try
+        var request = new PatchRequest
         {
-            var request = new PatchRequest
-            {
                 InputApkPath = ApkPath,
                 OutputApkPath = OutputApkPath,
                 ScriptInjectionProfile = SelectedScriptInjectionOption.Profile,
@@ -272,7 +272,21 @@ public partial class PatchViewModel : ObservableObject
                 SkipDexValidation = SkipDexValidation,
                 ScriptFilePath = ResolveScriptPathForProfile(SelectedScriptInjectionOption.Profile),
                 ConfigFilePath = ResolveConfigPathForProfile(SelectedScriptInjectionOption.Profile)
-            };
+        };
+        IsRunning = true;
+        SetConsoleLog(L("PatchLogStartingPipeline"));
+        using var ticket = _operations.Enqueue("Parcheo · " + Path.GetFileName(request.InputApkPath), request: new OperationRequestSnapshot
+        {
+            Kind = "patch", InputPath = request.InputApkPath, OutputPath = request.OutputApkPath,
+            SignApk = request.SignOutput, DecodeResources = request.DecodeResources, DecodeSources = request.DecodeSources,
+            UseAapt2 = request.UseAapt2ForBuild, InjectForAllArchitectures = request.InjectForAllArchitectures,
+            SkipDexValidation = request.SkipDexValidation, ScriptProfile = (int)request.ScriptInjectionProfile, DexMode = (int)request.DexPreservationMode
+        });
+        _activePatch = ticket;
+        CancelPatchCommand.NotifyCanExecuteChanged();
+
+        try
+        {
 
             AppendLog(BuildRunSummary(request));
             AppendLog(string.Format(L("PatchLogScriptProfile"), SelectedScriptInjectionOption.Label));
@@ -280,7 +294,10 @@ public partial class PatchViewModel : ObservableObject
             AppendLog($"Resolved ConfigFilePath: {request.ConfigFilePath ?? "<none>"}");
             AppendLog($"Effective config interaction.path: {GetEffectiveConfigInteractionPath(request.ConfigFilePath) ?? "<none>"}");
 
-            var result = await _patchPipelineService.RunAsync(request);
+            await ticket.WaitAsync();
+            ticket.Token.ThrowIfCancellationRequested();
+            ticket.Stage("Aplicando y comprobando el parche");
+            var result = await _patchPipelineService.RunAsync(request, ticket.Token, ticket.Stage);
 
             foreach (var stage in result.StageSummaries)
             {
@@ -295,6 +312,7 @@ public partial class PatchViewModel : ObservableObject
 
             if (result.Success)
             {
+                ticket.Complete();
                 AppendLog(string.Format(L("PatchLogCreated"), result.OutputApkPath));
                 await _dialogService.ShowInfoAsync(string.Format(L("PatchInfoCompleteMessage"), result.OutputApkPath), L("PatchInfoCompleteTitle"));
             }
@@ -308,6 +326,16 @@ public partial class PatchViewModel : ObservableObject
                 await _dialogService.ShowErrorAsync(L("PatchErrorFailedMessage"), L("PatchErrorFailedTitle"));
             }
         }
+        catch (ProcessTerminationUnconfirmedException ex)
+        {
+            ticket.TerminationUnconfirmed();
+            AppendLog("[ERROR] " + ex.Message);
+            await _dialogService.ShowErrorAsync(ex.Message, L("PatchErrorFailedTitle"));
+        }
+        catch (OperationCanceledException ex)
+        {
+            AppendLog("Parcheo cancelado. " + ex.Message);
+        }
         catch (Exception ex)
         {
             AppendLog($"[ERROR] {ex.Message}");
@@ -315,9 +343,19 @@ public partial class PatchViewModel : ObservableObject
         }
         finally
         {
+            _activePatch = null;
             IsRunning = false;
             RunPatchCommand.NotifyCanExecuteChanged();
         }
+    }
+
+    private bool CanCancelPatch() => IsRunning && _activePatch?.CanCancel == true;
+    [RelayCommand(CanExecute = nameof(CanCancelPatch))]
+    private void CancelPatch()
+    {
+        _activePatch?.Cancel();
+        CancelPatchCommand.NotifyCanExecuteChanged();
+        AppendLog("Cancelando; espera a que se detengan las herramientas.");
     }
 
     private bool CanRunPatch()

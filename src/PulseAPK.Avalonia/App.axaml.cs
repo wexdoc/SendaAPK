@@ -2,6 +2,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using PulseAPK.Avalonia.Services;
 using PulseAPK.Core.Abstractions;
@@ -40,22 +41,55 @@ public partial class App : Application
             var localAnalysis = Services.GetRequiredService<LocalApkViewModel>();
             var mainViewModel = Services.GetRequiredService<MainViewModel>();
             var dialogs = Services.GetRequiredService<IDialogService>();
+            var operations = Services.GetRequiredService<OperationCoordinator>();
+            var statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            statusTimer.Tick += (_, _) => mainViewModel.RefreshOperationStatus();
+            statusTimer.Start();
             var closeWarningOpen = false;
+            var closeWhenSafe = false;
+            void CloseWhenSafe()
+            {
+                if (closeWhenSafe && !operations.HasWork && !mainViewModel.HasActiveTasks)
+                {
+                    closeWhenSafe = false;
+                    mainWindow.Close();
+                }
+            }
+            operations.Changed += (_, _) => Dispatcher.UIThread.Post(CloseWhenSafe);
+            mainViewModel.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(MainViewModel.HasActiveTasks)) Dispatcher.UIThread.Post(CloseWhenSafe);
+            };
             var args = desktop.Args ?? Array.Empty<string>();
             if (args.Length == 2 && args[0] == "--apk") localAnalysis.ApkPath = args[1];
+            if (Program.InstanceBridge is { } bridge)
+            {
+                bridge.RequestReceived += path => Dispatcher.UIThread.Post(() =>
+                {
+                    if (path is not null) mainViewModel.QueueExternalApk(path);
+                    if (mainWindow.WindowState == global::Avalonia.Controls.WindowState.Minimized) mainWindow.WindowState = global::Avalonia.Controls.WindowState.Normal;
+                    mainWindow.Activate();
+                });
+                bridge.StartListening();
+            }
             mainWindow.Closing += async (_, e) =>
             {
-                if (!mainViewModel.HasActiveTasks) return;
+                if (!mainViewModel.HasActiveTasks && !operations.HasWork) return;
                 e.Cancel = true;
                 if (closeWarningOpen) return;
                 closeWarningOpen = true;
                 try
                 {
-                    await dialogs.ShowWarningAsync("Hay tareas en curso. Espera a que terminen o cancélalas desde su sección antes de cerrar.", "Tareas en curso");
+                    if (await dialogs.ShowQuestionAsync("Hay tareas en curso o en espera. ¿Quieres cancelar las tareas cancelables y cerrar cuando sea seguro? Elige No para seguir trabajando.", "Tareas en curso"))
+                    {
+                        closeWhenSafe = true;
+                        operations.CancelAll();
+                        CloseWhenSafe();
+                    }
                 }
                 finally { closeWarningOpen = false; }
             };
-            desktop.Exit += (_, _) => (Services as IDisposable)?.Dispose();
+            desktop.Exit += (_, _) => { statusTimer.Stop(); (Services as IDisposable)?.Dispose(); };
             desktop.MainWindow = mainWindow;
         }
 
@@ -75,6 +109,7 @@ public partial class App : Application
         services.AddTransient<SmaliAnalyserService>();
         services.AddTransient<ReportService>();
         services.AddSingleton<ILocalProcessRunner, LocalProcessRunner>();
+        services.AddSingleton<OperationCoordinator>();
         services.AddSingleton<IDefenderScanService, DefenderScanService>();
         services.AddSingleton<LocalAnalysisService>();
         services.AddSingleton<QuarantineService>();

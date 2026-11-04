@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -60,6 +61,7 @@ public sealed class ToolDownloadService : IToolDownloadService
         Func<string, string, string?>? checksumValueSelector,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (_toolRepository.TryGetCachedToolPath(artifactFileName, out var cachedPath))
         {
             return new ToolDownloadResult(cachedPath, Downloaded: false);
@@ -71,41 +73,41 @@ public sealed class ToolDownloadService : IToolDownloadService
             ?? throw new InvalidOperationException($"Could not find expected tool asset for {owner}/{repo} latest release.");
 
         var artifactPath = _toolRepository.GetToolPath(artifactFileName);
-        await DownloadAssetToFileAsync(artifactAsset.BrowserDownloadUrl, artifactPath, cancellationToken);
-
-        if (checksumFileName is null || checksumAssetPredicate is null || checksumValueSelector is null)
+        var stagedArtifact = artifactPath + "." + Guid.NewGuid().ToString("N") + ".download";
+        var stagedChecksum = artifactPath + "." + Guid.NewGuid().ToString("N") + ".checksum";
+        try
         {
+            await DownloadAssetToFileAsync(artifactAsset.BrowserDownloadUrl, stagedArtifact, 256L * 1024 * 1024, cancellationToken);
+
+            if (checksumFileName is not null && checksumAssetPredicate is not null && checksumValueSelector is not null)
+            {
+                var checksumAsset = release.Assets.FirstOrDefault(a => checksumAssetPredicate(a.Name))
+                    ?? throw new InvalidOperationException($"Could not find checksum asset for {owner}/{repo} latest release.");
+                await DownloadAssetToFileAsync(checksumAsset.BrowserDownloadUrl, stagedChecksum, 1024 * 1024, cancellationToken);
+                var checksumContent = await File.ReadAllTextAsync(stagedChecksum, cancellationToken);
+                var expectedSha256 = checksumValueSelector(checksumContent, artifactAsset.Name);
+                if (string.IsNullOrWhiteSpace(expectedSha256))
+                    throw new InvalidOperationException("Could not parse SHA256 checksum value for downloaded tool.");
+                var actualSha256 = await ComputeSha256Async(stagedArtifact, cancellationToken);
+                if (!actualSha256.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("SHA256 verification failed for downloaded tool.");
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            // Do not replace a working tool, including one created after the cache check.
+            File.Move(stagedArtifact, artifactPath, overwrite: false);
             return new ToolDownloadResult(artifactPath, Downloaded: true);
         }
-
-        var checksumAsset = release.Assets.FirstOrDefault(a => checksumAssetPredicate(a.Name))
-            ?? throw new InvalidOperationException($"Could not find checksum asset for {owner}/{repo} latest release.");
-
-        var checksumPath = _toolRepository.GetToolPath(checksumFileName);
-        await DownloadAssetToFileAsync(checksumAsset.BrowserDownloadUrl, checksumPath, cancellationToken);
-
-        var checksumContent = await File.ReadAllTextAsync(checksumPath, cancellationToken);
-        var expectedSha256 = checksumValueSelector(checksumContent, artifactAsset.Name);
-
-        if (string.IsNullOrWhiteSpace(expectedSha256))
+        finally
         {
-            File.Delete(artifactPath);
-            throw new InvalidOperationException("Could not parse SHA256 checksum value for downloaded tool.");
+            if (File.Exists(stagedArtifact)) File.Delete(stagedArtifact);
+            if (File.Exists(stagedChecksum)) File.Delete(stagedChecksum);
         }
-
-        var actualSha256 = await ComputeSha256Async(artifactPath, cancellationToken);
-        if (!actualSha256.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
-        {
-            File.Delete(artifactPath);
-            throw new InvalidOperationException("SHA256 verification failed for downloaded tool.");
-        }
-
-        return new ToolDownloadResult(artifactPath, Downloaded: true);
     }
 
     private async Task<GitHubReleaseResponse> GetLatestReleaseAsync(string owner, string repo, CancellationToken cancellationToken)
     {
-        var response = await _httpClient.GetAsync($"https://api.github.com/repos/{owner}/{repo}/releases/latest", cancellationToken);
+        using var response = await _httpClient.GetAsync($"https://api.github.com/repos/{owner}/{repo}/releases/latest", cancellationToken);
         response.EnsureSuccessStatusCode();
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -119,20 +121,28 @@ public sealed class ToolDownloadService : IToolDownloadService
         return release;
     }
 
-    private async Task DownloadAssetToFileAsync(string downloadUrl, string destinationPath, CancellationToken cancellationToken)
+    private async Task DownloadAssetToFileAsync(string downloadUrl, string destinationPath, long maxBytes, CancellationToken cancellationToken)
     {
         using var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        var tempPath = destinationPath + ".download";
+        if (response.Content.Headers.ContentLength is long length && length > maxBytes)
+            throw new InvalidDataException("La descarga supera el tamaño permitido.");
         await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken))
-        await using (var target = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+        await using (var target = new FileStream(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
         {
-            await source.CopyToAsync(target, cancellationToken);
+            var buffer = new byte[81920];
+            long total = 0;
+            int read;
+            while ((read = await source.ReadAsync(buffer.AsMemory(), cancellationToken)) != 0)
+            {
+                total += read;
+                if (total > maxBytes) throw new InvalidDataException("La descarga supera el tamaño permitido.");
+                await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            }
             await target.FlushAsync(cancellationToken);
+            target.Flush(flushToDisk: true);
         }
-
-        File.Move(tempPath, destinationPath, overwrite: true);
     }
 
     private static async Task<string> ComputeSha256Async(string filePath, CancellationToken cancellationToken)

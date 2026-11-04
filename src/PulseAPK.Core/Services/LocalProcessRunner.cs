@@ -20,8 +20,7 @@ public sealed class LocalProcessRunner : ILocalProcessRunner
         try { await process.WaitForExitAsync(token); }
         catch (OperationCanceledException)
         {
-            if (!process.HasExited) process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync();
+            await ProcessTermination.StopAfterCancellationAsync(process);
             await Task.WhenAll(output, error);
             throw;
         }

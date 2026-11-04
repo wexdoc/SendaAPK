@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PulseAPK.Core.Abstractions;
@@ -16,6 +17,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly AdbService _adbService;
     private readonly LocalizationService _localizationService;
     private readonly IThemeService _themeService;
+    private readonly OperationCoordinator _operations;
+    private readonly IDispatcherService? _dispatcher;
+    private OperationTicket? _activeDownload;
     private bool _disposed;
 
     [ObservableProperty]
@@ -31,7 +35,16 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private string _adbPathWatermark = "Auto-detect if empty";
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(DownloadApktoolCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DownloadUbersignerCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelDownloadCommand))]
+    [NotifyPropertyChangedFor(nameof(CanModifyToolPaths))]
     private bool _isDownloadingTools;
+
+    [ObservableProperty]
+    private string _downloadStatus = string.Empty;
+
+    public bool CanModifyToolPaths => !_operations.HasWork && !IsDownloadingTools;
 
     [ObservableProperty]
     private bool _isDeviceToolsEnabled;
@@ -59,7 +72,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         IToolDownloadService toolDownloadService,
         AdbService adbService,
         LocalizationService localizationService,
-        IThemeService themeService)
+        IThemeService themeService,
+        OperationCoordinator? operations = null,
+        IDispatcherService? dispatcher = null)
     {
         _settingsService = settingsService;
         _filePickerService = filePickerService;
@@ -69,6 +84,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _adbService = adbService;
         _localizationService = localizationService;
         _themeService = themeService;
+        _operations = operations ?? new OperationCoordinator(null);
+        _dispatcher = dispatcher;
+        _operations.Changed += OnOperationsChanged;
 
         _apktoolPath = _settingsService.Settings.ApktoolPath;
         _ubersignPath = _settingsService.Settings.UbersignPath;
@@ -133,8 +151,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task BrowseApktool()
     {
+        if (!CanModifyToolPaths) return;
         var file = await _filePickerService.OpenFileAsync("Apktool files (*.jar;*.bat;*.cmd;*.exe)|*.jar;*.bat;*.cmd;*.exe|All Files (*.*)|*.*");
-        if (file != null)
+        if (file != null && CanModifyToolPaths)
         {
             ApktoolPath = file;
         }
@@ -143,8 +162,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task BrowseUbersign()
     {
+        if (!CanModifyToolPaths) return;
         var file = await _filePickerService.OpenFileAsync("Jar/Exe Files (*.jar;*.exe)|*.jar;*.exe|All Files (*.*)|*.*");
-        if (file != null)
+        if (file != null && CanModifyToolPaths)
         {
             UbersignPath = file;
         }
@@ -153,46 +173,80 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task BrowseAdb()
     {
+        if (!CanModifyToolPaths) return;
         var file = await _filePickerService.OpenFileAsync("ADB|adb;adb.exe|All Files (*.*)|*.*");
-        if (file != null)
+        if (file != null && CanModifyToolPaths)
         {
             AdbPath = file;
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanStartDownload))]
     private async Task DownloadApktool()
     {
         await DownloadToolAsync(
-            () => _toolDownloadService.DownloadApktoolAsync(),
+            token => _toolDownloadService.DownloadApktoolAsync(token),
             path => ApktoolPath = path,
-            Properties.Resources.ResourceManager.GetString("ToolNameApktool") ?? "Apktool");
+            Properties.Resources.ResourceManager.GetString("ToolNameApktool") ?? "Apktool",
+            warnUnverified: true);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanStartDownload))]
     private async Task DownloadUbersigner()
     {
         await DownloadToolAsync(
-            () => _toolDownloadService.DownloadUbersignerAsync(),
+            token => _toolDownloadService.DownloadUbersignerAsync(token),
             path => UbersignPath = path,
             Properties.Resources.ResourceManager.GetString("ToolNameUbersigner") ?? "Ubersigner");
     }
 
+    private bool CanStartDownload() => !IsDownloadingTools;
+    private bool CanCancelDownload() => IsDownloadingTools && _activeDownload?.CanCancel == true;
+
+    [RelayCommand(CanExecute = nameof(CanCancelDownload))]
+    private void CancelDownload()
+    {
+        _activeDownload?.Cancel();
+        DownloadStatus = "Cancelando la descarga; espera a que termine de detenerse.";
+        CancelDownloadCommand.NotifyCanExecuteChanged();
+    }
+
     private async Task DownloadToolAsync(
-        Func<Task<ToolDownloadResult>> action,
+        Func<CancellationToken, Task<ToolDownloadResult>> action,
         Action<string> applyPath,
-        string toolDisplayName)
+        string toolDisplayName,
+        bool warnUnverified = false)
     {
         if (IsDownloadingTools)
         {
             return;
         }
 
+        OperationTicket? ticket = null;
         try
         {
             IsDownloadingTools = true;
-            var result = await action();
+            ticket = _operations.Enqueue("Descarga · " + toolDisplayName);
+            _activeDownload = ticket;
+            CancelDownloadCommand.NotifyCanExecuteChanged();
+            DownloadStatus = "Esperando turno para descargar la herramienta...";
+            await ticket.WaitAsync();
+            ticket.Token.ThrowIfCancellationRequested();
+            if (warnUnverified)
+            {
+                ticket.Stage("Aviso de integridad de Apktool");
+                await _dialogService.ShowWarningAsync("La descarga de Apktool no incluye una suma de verificación independiente en este flujo. Comprueba su origen e integridad antes de utilizarla.", "Integridad de la herramienta");
+                ticket.Token.ThrowIfCancellationRequested();
+            }
+            ticket.Stage("Descargando y comprobando " + toolDisplayName);
+            DownloadStatus = "Descargando y comprobando " + toolDisplayName + "...";
+            var result = await action(ticket.Token);
+            ticket.Token.ThrowIfCancellationRequested();
             applyPath(result.Path);
+            ticket.Complete();
+            DownloadStatus = result.Downloaded
+                ? warnUnverified ? "Herramienta descargada; su integridad independiente no se verificó." : "Herramienta descargada y verificada."
+                : "Se conservó la herramienta existente; no se verificó su integridad en esta operación.";
 
             if (result.Downloaded)
             {
@@ -201,14 +255,30 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 await _dialogService.ShowInfoAsync(string.Format(successTemplate, toolDisplayName), Properties.Resources.SettingsHeader);
             }
         }
+        catch (OperationCanceledException) { DownloadStatus = "Descarga cancelada. Se conservó la herramienta anterior."; }
         catch (Exception ex)
         {
-            await _dialogService.ShowErrorAsync($"Failed to download {toolDisplayName}: {ex.Message}", Properties.Resources.SettingsHeader);
+            DownloadStatus = "No se completó la descarga. Se conservó la herramienta anterior.";
+            await _dialogService.ShowErrorAsync($"No se pudo descargar {toolDisplayName}: {ex.Message}", Properties.Resources.SettingsHeader);
         }
         finally
         {
+            _activeDownload = null;
+            ticket?.Dispose();
             IsDownloadingTools = false;
         }
+    }
+
+    private void OnOperationsChanged(object? sender, EventArgs e)
+    {
+        void Refresh()
+        {
+            if (_disposed) return;
+            OnPropertyChanged(nameof(CanModifyToolPaths));
+            CancelDownloadCommand.NotifyCanExecuteChanged();
+        }
+        if (_dispatcher is not null && !_dispatcher.CheckAccess()) _ = _dispatcher.InvokeAsync(Refresh);
+        else Refresh();
     }
 
     private void NormalizeManagedToolPathsIfMissing()
@@ -307,6 +377,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
 
         _localizationService.PropertyChanged -= OnLocalizationChanged;
+        _operations.Changed -= OnOperationsChanged;
+        _activeDownload?.Cancel();
         _disposed = true;
     }
 }

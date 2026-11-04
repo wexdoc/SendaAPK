@@ -90,6 +90,65 @@ public class PatchPipelineServiceTests
         AssertStageSequence(result, SuccessfulStagesWithSigning);
     }
 
+    [Fact]
+    public async Task CancelDuringSigningPreservesUnsignedArtifact()
+    {
+        var input = Path.Combine(Path.GetTempPath(), $"input-{Guid.NewGuid():N}.apk");
+        var output = Path.Combine(Path.GetTempPath(), $"output-{Guid.NewGuid():N}.apk");
+        await File.WriteAllTextAsync(input, "original");
+        var signing = new FakeSigningService(waitForCancellation: true);
+        using var cancellation = new CancellationTokenSource();
+        try
+        {
+            var run = CreatePipeline(fakeSigningService: signing).RunAsync(new PatchRequest
+            {
+                InputApkPath = input, OutputApkPath = output, SignOutput = true
+            }, cancellation.Token);
+            await signing.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            cancellation.Cancel();
+            var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+            Assert.Contains("sin firmar", error.Message);
+            Assert.True(File.Exists(output));
+            Assert.Equal("original", await File.ReadAllTextAsync(input));
+            using var zip = ZipFile.OpenRead(output);
+            Assert.NotNull(zip.GetEntry("classes.dex"));
+        }
+        finally { File.Delete(input); File.Delete(output); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PublicationCollisionPreservesGeneratedApk(bool signingFails)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "senda-publication-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var input = Path.Combine(root, "original.apk");
+        var output = Path.Combine(root, "resultado.apk");
+        var working = Path.Combine(root, "jobs");
+        await File.WriteAllTextAsync(input, "original");
+        try
+        {
+            var pipeline = CreatePipeline(fakeSigningService: new FakeSigningService(shouldFail: signingFails));
+            var request = new PatchRequest
+            {
+                InputApkPath = input, OutputApkPath = output, WorkingDirectory = working, SignOutput = signingFails
+            };
+            var collisionStage = signingFails ? "Firmando APK" : "Publicando resultado";
+            var error = await Assert.ThrowsAsync<IOException>(() => pipeline.RunAsync(request, CancellationToken.None, stage =>
+            {
+                if (stage == collisionStage) File.WriteAllText(output, "archivo existente");
+            }));
+            var job = Assert.Single(Directory.GetDirectories(working));
+            Assert.Contains(job, error.Message);
+            Assert.Equal("archivo existente", await File.ReadAllTextAsync(output));
+            Assert.Equal("original", await File.ReadAllTextAsync(input));
+            using var generated = ZipFile.OpenRead(Path.Combine(job, "rebuilt.apk"));
+            Assert.NotNull(generated.GetEntry("classes.dex"));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
 
     [Fact]
     public async Task RunAsync_SkipsDexMerge_WhenDexModeDisabled()
@@ -926,21 +985,29 @@ public class PatchPipelineServiceTests
     private sealed class FakeSigningService : ISigningService
     {
         private readonly bool _shouldFail;
+        private readonly bool _waitForCancellation;
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public FakeSigningService(bool shouldFail = false)
+        public FakeSigningService(bool shouldFail = false, bool waitForCancellation = false)
         {
             _shouldFail = shouldFail;
+            _waitForCancellation = waitForCancellation;
         }
 
-        public Task<(bool Success, string? SignedApkPath, string? Error)> SignAsync(string inputApkPath, string outputApkPath, CancellationToken cancellationToken = default)
+        public async Task<(bool Success, string? SignedApkPath, string? Error)> SignAsync(string inputApkPath, string outputApkPath, CancellationToken cancellationToken = default)
         {
+            if (_waitForCancellation)
+            {
+                Started.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
             if (_shouldFail)
             {
-                return Task.FromResult((false, (string?)null, (string?)"Signing failed in fake service."));
+                return (false, null, "Signing failed in fake service.");
             }
 
             File.Copy(inputApkPath, outputApkPath, overwrite: true);
-            return Task.FromResult((true, (string?)outputApkPath, (string?)null));
+            return (true, outputApkPath, null);
         }
     }
 

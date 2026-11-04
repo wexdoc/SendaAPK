@@ -38,6 +38,8 @@ public sealed class LocalAnalysisService(ApktoolRunner apktool, SmaliAnalyserSer
                 {
                     AntivirusState.Unavailable => StageState.Unavailable,
                     AntivirusState.Error or AntivirusState.ReviewRequired => StageState.Failed,
+                    AntivirusState.Cancelled => StageState.Cancelled,
+                    AntivirusState.NotRun => StageState.Unavailable,
                     _ => StageState.Completed
                 };
             });
@@ -94,8 +96,12 @@ public sealed class LocalAnalysisService(ApktoolRunner apktool, SmaliAnalyserSer
         }
         catch (OperationCanceledException)
         {
+            var defenderWasRunning = report.Stages[1].State == StageState.Running;
             foreach (var stage in report.Stages.Where(s => s.State is StageState.Running or StageState.Pending)) stage.State = StageState.Cancelled;
-            if (report.Defender.State == AntivirusState.NotRun) report.Defender = new(AntivirusState.Cancelled, "Análisis cancelado.");
+            if (report.Defender.State == AntivirusState.NotRun)
+                report.Defender = new(AntivirusState.Cancelled, defenderWasRunning
+                    ? "Solicitud cancelada; no se puede confirmar que Defender haya terminado en segundo plano."
+                    : "Defender no llegó a iniciarse.");
             return report;
         }
         catch (Exception ex)

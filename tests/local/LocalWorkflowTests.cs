@@ -62,7 +62,8 @@ public sealed class LocalWorkflowTests : IDisposable
         var entry = await service.QuarantineAsync(file, await ApkInputService.HashAsync(file));
         await File.WriteAllTextAsync(file, "existing");
         await Assert.ThrowsAsync<IOException>(() => service.RestoreAsync(entry));
-        Assert.Equal("existing", await File.ReadAllTextAsync(file)); Assert.Single(service.List());
+        Assert.Equal("existing", await File.ReadAllTextAsync(file));
+        Assert.Contains("ruta original ocupada", Assert.Single(service.List()).State, StringComparison.OrdinalIgnoreCase);
     }
     [Fact] public async Task RestoreRejectsModifiedQuarantine()
     {
@@ -111,6 +112,29 @@ public sealed class LocalWorkflowTests : IDisposable
         var entry = await service.QuarantineAsync(file, await ApkInputService.HashAsync(file));
         await File.WriteAllTextAsync(Path.Combine(directory, Guid.NewGuid().ToString("N") + ".json"), "{\"Sha256\":null}");
         Assert.Equal(entry.Id, Assert.Single(service.List()).Id);
+    }
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RestoreRecoversFromDamagedOrMissingPrimaryMetadata(bool damagePrimary)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var file = Apk();
+        var hash = await ApkInputService.HashAsync(file);
+        var directory = Path.Combine(root, "quarantine");
+        var service = new QuarantineService(directory);
+        var entry = await service.QuarantineAsync(file, hash);
+        var metadata = Path.Combine(directory, entry.Id + ".json");
+        Assert.True(File.Exists(metadata + ".bak"));
+        if (damagePrimary) await File.WriteAllTextAsync(metadata, "{}");
+        else File.Delete(metadata);
+
+        var recovered = Assert.Single(service.List());
+        Assert.Equal(entry.Id, recovered.Id);
+        Assert.Contains("recuperados", recovered.State, StringComparison.OrdinalIgnoreCase);
+        await service.RestoreAsync(recovered);
+        Assert.Equal(hash, await ApkInputService.HashAsync(file));
+        Assert.Empty(service.List());
     }
     [Fact] public async Task CancelledCodeAnalysisStops()
     {
@@ -162,6 +186,19 @@ public sealed class LocalWorkflowTests : IDisposable
     private sealed class FixedDefender : IDefenderScanService
     {
         public Task<DefenderResult> ScanAsync(string path, CancellationToken token) => Task.FromResult(new DefenderResult(AntivirusState.Unavailable, "fixture"));
+    }
+    private sealed class CancelledDefender : IDefenderScanService
+    {
+        public Task<DefenderResult> ScanAsync(string path, CancellationToken token)
+            => Task.FromResult(new DefenderResult(AntivirusState.Cancelled, "No se confirmó el resultado."));
+    }
+    [Fact] public async Task CancelledDefenderDoesNotProduceACompletedStage()
+    {
+        var settings = new FakeSettings(root);
+        var service = new LocalAnalysisService(new(settings), new(), new CancelledDefender(), new LocalProcessRunner(), settings);
+        var result = await service.AnalyseAsync(Apk(), _ => { });
+        Assert.Equal(StageState.Cancelled, result.Stages[1].State);
+        Assert.Equal(AntivirusState.Cancelled, result.Defender.State);
     }
     private sealed class WaitingDefender : IDefenderScanService
     {
@@ -231,12 +268,12 @@ public sealed class LocalWorkflowTests : IDisposable
     {
         if (!OperatingSystem.IsWindows()) return;
         var settings = new FakeSettings(root); var tool = Path.Combine(root, "slow.cmd");
-        File.WriteAllText(tool, "@echo off\r\nping -n 31 127.0.0.1 >nul\r\n"); settings.Settings.ApktoolPath = tool;
+        File.WriteAllText(tool, "@echo off\r\n:wait\r\ngoto wait\r\n"); settings.Settings.ApktoolPath = tool;
         var service = new LocalAnalysisService(new(settings), new(), new FixedDefender(), new JavaProcess(0), settings);
         using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(1000));
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var report = await service.AnalyseAsync(Apk(), _ => { }, cancel.Token);
-        Assert.Equal(StageState.Cancelled, report.Stages[2].State);
+        Assert.True(report.Stages[2].State == StageState.Cancelled, report.Stages[2].Detail);
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10));
     }
     [Fact] public async Task RealApkIntegrationWhenExplicitlyConfigured()

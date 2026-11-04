@@ -7,6 +7,64 @@ namespace PulseAPK.Tests.ViewModels;
 public class MainViewModelNavigationTests
 {
     [Fact]
+    public async Task InterruptedOperationRestoresOptionsWithoutStartingIt()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "senda-recovery-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var journal = Path.Combine(root, "operations.json");
+        var input = Path.Combine(root, "archivo con acentos á.apk");
+        var output = Path.Combine(root, "proyecto");
+        try
+        {
+            var original = new OperationCoordinator(journal);
+            using var ticket = original.Enqueue("Descompilación", request: new OperationRequestSnapshot
+            {
+                Kind = "decompile", InputPath = input, OutputPath = output,
+                DecodeResources = false, DecodeSources = true, KeepOriginalManifest = true
+            });
+            await ticket.WaitAsync();
+            var recovered = new OperationCoordinator(journal);
+            var settings = new TestSettings();
+            using var main = new MainViewModel(new TestProvider(settings), LocalizationService.Instance, null!, settings, recovered);
+            Assert.True(main.HasInterruptedOperations);
+            main.ReviewInterruptedCommand.Execute(null);
+            var view = Assert.IsType<DecompileViewModel>(main.CurrentView);
+            Assert.Equal(input, view.ApkPath);
+            Assert.Equal(output, view.OutputFolder);
+            Assert.False(view.DecodeResources);
+            Assert.True(view.DecodeSources);
+            Assert.True(view.KeepOriginalManifest);
+            Assert.False(view.IsRunning);
+            Assert.False(Directory.Exists(output));
+            Assert.False(main.HasInterruptedOperations);
+        }
+        finally
+        {
+            if (File.Exists(journal)) File.Delete(journal);
+            if (File.Exists(journal + ".bak")) File.Delete(journal + ".bak");
+            Directory.Delete(root);
+        }
+    }
+    [Fact]
+    public void ExternalRequestWaitsUntilActiveAnalysisFinishes()
+    {
+        var settings = new TestSettings();
+        var provider = new TestProvider(settings);
+        using var main = new MainViewModel(provider, LocalizationService.Instance, null!, settings);
+        var local = Assert.IsType<LocalApkViewModel>(main.CurrentView);
+        local.ApkPath = "actual.apk";
+        local.Busy = true;
+        main.QueueExternalApk("siguiente.apk");
+        Assert.False(main.OpenPendingApkCommand.CanExecute(null));
+        Assert.Equal("actual.apk", local.ApkPath);
+        local.Busy = false;
+        Assert.True(main.OpenPendingApkCommand.CanExecute(null));
+        main.OpenPendingApkCommand.Execute(null);
+        Assert.Equal("siguiente.apk", local.ApkPath);
+        Assert.False(main.HasPendingApks);
+    }
+
+    [Fact]
     public void NavigationRetainsRunningViewAndTracksItsState()
     {
         var settings = new TestSettings();

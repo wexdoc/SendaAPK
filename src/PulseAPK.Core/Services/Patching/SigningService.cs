@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using PulseAPK.Core.Abstractions.Patching;
 
 namespace PulseAPK.Core.Services.Patching;
@@ -20,6 +21,8 @@ public sealed class SigningService : ISigningService
                 ? (true, outputApkPath, null)
                 : (false, null, $"Signing failed with exit code {code}.");
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (ProcessTerminationUnconfirmedException) { throw; }
         catch (Exception ex)
         {
             return (false, null, ex.Message);

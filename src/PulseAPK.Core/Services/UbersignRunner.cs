@@ -1,3 +1,4 @@
+// Modified for SendaAPK (2026); original work remains credited in NOTICE.
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -93,11 +94,20 @@ namespace PulseAPK.Core.Services
                 }
             };
 
+            cancellationToken.ThrowIfCancellationRequested();
             process.Start();
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            await process.WaitForExitAsync(cancellationToken);
+            try
+            {
+                await process.WaitForExitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                await ProcessTermination.StopAfterCancellationAsync(process);
+                throw;
+            }
 
             if (process.ExitCode != 0)
             {

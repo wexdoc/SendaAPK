@@ -58,7 +58,7 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
 
     private bool _isConsolePreviewActive = true;
     private bool _disposed;
-    private CancellationTokenSource? _activeDecompileCancellationTokenSource;
+    private OperationTicket? _activeDecompile;
 
     private readonly IFilePickerService _filePickerService;
     private readonly ISettingsService _settingsService;
@@ -67,6 +67,7 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
     private readonly IDispatcherService _dispatcherService;
     private readonly ISystemService _systemService;
     private readonly IAppLogService? _appLogService;
+    private readonly OperationCoordinator _operations;
 
     public bool IsHintVisible => string.IsNullOrEmpty(ApkPath);
 
@@ -77,7 +78,8 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
         IDialogService dialogService,
         IDispatcherService dispatcherService,
         ISystemService systemService,
-        IAppLogService? appLogService = null)
+        IAppLogService? appLogService = null,
+        OperationCoordinator? operations = null)
     {
         _filePickerService = filePickerService;
         _settingsService = settingsService;
@@ -86,6 +88,7 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
         _dispatcherService = dispatcherService;
         _systemService = systemService;
         _appLogService = appLogService;
+        _operations = operations ?? new OperationCoordinator(null);
         
         _consoleLog = Properties.Resources.WaitingForCommand;
 
@@ -266,19 +269,46 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var selectedApk = ApkPath;
+        var decodeResources = DecodeResources;
+        var decodeSources = DecodeSources;
+        var keepOriginalManifest = KeepOriginalManifest;
+        var extractToApkFolder = ExtractToApkFolder;
         IsRunning = true;
-        var cancellationTokenSource = new CancellationTokenSource();
-        _activeDecompileCancellationTokenSource = cancellationTokenSource;
+        using var ticket = _operations.Enqueue("Descompilación · " + Path.GetFileName(selectedApk), request: new OperationRequestSnapshot
+        {
+            Kind = "decompile", InputPath = selectedApk, OutputPath = normalizedOutputDir,
+            DecodeResources = decodeResources, DecodeSources = decodeSources,
+            KeepOriginalManifest = keepOriginalManifest, ExtractToApkFolder = extractToApkFolder
+        });
+        _activeDecompile = ticket;
         CancelDecompileCommand.NotifyCanExecuteChanged();
+        var temporaryDir = Path.Combine(Path.GetDirectoryName(normalizedOutputDir)!, ".sendaapk-" + Guid.NewGuid().ToString("N"));
+        var preserveTemporary = false;
 
         try
         {
-            var decompileResult = await _apktoolRunner.RunDecompileAsync(ApkPath, normalizedOutputDir, DecodeResources, DecodeSources, KeepOriginalManifest, forceOverwrite: false, cancellationTokenSource.Token);
+            await ticket.WaitAsync();
+            ticket.Token.ThrowIfCancellationRequested();
+            if (Directory.Exists(normalizedOutputDir) || File.Exists(normalizedOutputDir))
+                throw new IOException("La ruta de salida ya existe. Elige otra para conservar su contenido.");
+            ticket.Stage("Descompilando APK");
+            Directory.CreateDirectory(Path.GetDirectoryName(normalizedOutputDir)!);
+            var decompileResult = await _apktoolRunner.RunDecompileAsync(selectedApk, temporaryDir, decodeResources, decodeSources, keepOriginalManifest, forceOverwrite: false, ticket.Token);
             var exitCode = decompileResult.ExitCode;
 
             if (exitCode == 0)
             {
+                ticket.Token.ThrowIfCancellationRequested();
+                if (!Directory.Exists(temporaryDir)) throw new IOException("La herramienta no produjo la carpeta esperada.");
+                try { Directory.Move(temporaryDir, normalizedOutputDir); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    preserveTemporary = true;
+                    throw new IOException($"No se pudo publicar la salida; el proyecto generado se conservó en {temporaryDir}: {ex.Message}", ex);
+                }
                 AppendLog(Properties.Resources.DecompileSuccessful);
+                ticket.Complete();
                 await _dialogService.ShowInfoAsync(Properties.Resources.DecompileSuccessful);
             }
             else
@@ -291,6 +321,13 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
         {
             AppendLog("Descompilación cancelada.");
         }
+        catch (ProcessTerminationUnconfirmedException ex)
+        {
+            ticket.TerminationUnconfirmed();
+            preserveTemporary = true;
+            AppendLog($"{ex.Message} Proyecto temporal: {temporaryDir}");
+            await _dialogService.ShowErrorAsync(ex.Message);
+        }
         catch (Exception ex)
         {
             AppendLog($"{Properties.Resources.DecompileFailed}: {ex.Message}");
@@ -298,23 +335,49 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            if (ReferenceEquals(_activeDecompileCancellationTokenSource, cancellationTokenSource))
+            if (!preserveTemporary && Directory.Exists(temporaryDir))
             {
-                _activeDecompileCancellationTokenSource = null;
+                try { DeleteTemporaryProject(temporaryDir); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                { AppendLog($"No se pudo limpiar el proyecto temporal {temporaryDir}: {ex.Message}"); }
             }
-
-            cancellationTokenSource.Dispose();
+            if (ReferenceEquals(_activeDecompile, ticket))
+            {
+                _activeDecompile = null;
+            }
             IsRunning = false;
             RunDecompileCommand.NotifyCanExecuteChanged();
         }
     }
 
-    private bool CanCancelDecompile() => IsRunning && _activeDecompileCancellationTokenSource is { IsCancellationRequested: false };
+    private static void DeleteTemporaryProject(string directory)
+    {
+        if (!Path.GetFileName(directory).StartsWith(".sendaapk-", StringComparison.Ordinal))
+            throw new IOException("La carpeta no es un proyecto temporal de SendaAPK.");
+        var pending = new Stack<string>();
+        pending.Push(directory);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                throw new IOException("El proyecto contiene un enlace y debe revisarse manualmente.");
+            foreach (var entry in Directory.EnumerateFileSystemEntries(current))
+            {
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new IOException("El proyecto contiene un enlace y debe revisarse manualmente.");
+                if ((attributes & FileAttributes.Directory) != 0) pending.Push(entry);
+            }
+        }
+        Directory.Delete(directory, recursive: true);
+    }
+
+    private bool CanCancelDecompile() => IsRunning && _activeDecompile is { Token.IsCancellationRequested: false };
 
     [RelayCommand(CanExecute = nameof(CanCancelDecompile))]
     private void CancelDecompile()
     {
-        _activeDecompileCancellationTokenSource?.Cancel();
+        _activeDecompile?.Cancel();
         CancelDecompileCommand.NotifyCanExecuteChanged();
         AppendLog("Cancelando descompilación; espera a que se detenga la herramienta.");
     }
@@ -624,9 +687,8 @@ public partial class DecompileViewModel : ObservableObject, IDisposable
 
         _disposed = true;
 
-        _activeDecompileCancellationTokenSource?.Cancel();
-        _activeDecompileCancellationTokenSource?.Dispose();
-        _activeDecompileCancellationTokenSource = null;
+        _activeDecompile?.Cancel();
+        _activeDecompile = null;
 
         lock (_logLock)
         {

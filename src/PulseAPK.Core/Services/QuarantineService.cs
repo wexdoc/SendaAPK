@@ -28,6 +28,9 @@ public sealed class QuarantineService
     {
         if (!Guid.TryParseExact(entry.Id, "N", out _) || entry.Sha256 is null || entry.Sha256.Length != 64 || !entry.Sha256.All(Uri.IsHexDigit))
             throw new IOException("Metadatos de cuarentena no válidos.");
+        if (string.IsNullOrWhiteSpace(entry.OriginalPath) || !Path.IsPathFullyQualified(entry.OriginalPath) ||
+            !Path.GetExtension(entry.OriginalPath).Equals(".apk", StringComparison.OrdinalIgnoreCase))
+            throw new IOException("La ruta original de cuarentena no es válida.");
         if (Directory.Exists(root) && (File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
             throw new IOException("La carpeta de cuarentena no puede ser un enlace.");
         if (File.Exists(Data(entry)) && (File.GetAttributes(Data(entry)) & FileAttributes.ReparsePoint) != 0)
@@ -35,26 +38,76 @@ public sealed class QuarantineService
     }
     private async Task Save(QuarantineEntry entry)
     {
-        var temporary = Metadata(entry) + ".tmp";
-        await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(entry, new JsonSerializerOptions { WriteIndented = true }));
-        File.Move(temporary, Metadata(entry), overwrite: true);
+        var metadata = Metadata(entry);
+        var temporary = metadata + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            if ((File.Exists(metadata) && (File.GetAttributes(metadata) & FileAttributes.ReparsePoint) != 0) ||
+                (File.Exists(metadata + ".bak") && (File.GetAttributes(metadata + ".bak") & FileAttributes.ReparsePoint) != 0))
+                throw new IOException("Los metadatos de cuarentena no pueden ser enlaces.");
+            await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                await JsonSerializer.SerializeAsync(stream, entry, new JsonSerializerOptions { WriteIndented = true });
+                await stream.FlushAsync();
+                stream.Flush(flushToDisk: true);
+            }
+            if (File.Exists(metadata))
+                File.Replace(temporary, metadata, metadata + ".bak");
+            else
+                File.Move(temporary, metadata, overwrite: false);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
     }
     public IReadOnlyList<QuarantineEntry> List()
     {
         if (!Directory.Exists(root)) return Array.Empty<QuarantineEntry>();
         var entries = new List<QuarantineEntry>();
-        foreach (var path in Directory.GetFiles(root, "*.json"))
+        var metadataPaths = Directory.GetFiles(root, "*.json")
+            .Concat(Directory.GetFiles(root, "*.json.bak").Select(path => path[..^4]))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in metadataPaths)
         {
+            var recovered = false;
+            var entry = ReadMetadata(path) ?? ReadBackup(path, out recovered);
+            if (entry is null) continue;
             try
             {
-                var entry = JsonSerializer.Deserialize<QuarantineEntry>(File.ReadAllText(path));
-                if (entry is null) continue;
-                Validate(entry);
-                if (File.Exists(Data(entry))) entries.Add(entry);
+                if (File.Exists(Data(entry)))
+                {
+                    if (recovered) entry.State = "Metadatos recuperados; se comprobará la huella al restaurar";
+                    if (File.Exists(entry.OriginalPath))
+                        entry.State += " · ruta original ocupada; restauración bloqueada";
+                    entries.Add(entry);
+                }
             }
             catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { }
         }
         return entries.OrderByDescending(e => e.Created).ToList();
+    }
+
+    private QuarantineEntry? ReadBackup(string path, out bool recovered)
+    {
+        var entry = ReadMetadata(path + ".bak");
+        recovered = entry is not null;
+        return entry;
+    }
+
+    private QuarantineEntry? ReadMetadata(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return null;
+            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) return null;
+            var entry = JsonSerializer.Deserialize<QuarantineEntry>(File.ReadAllText(path));
+            if (entry is null) return null;
+            Validate(entry);
+            var expected = entry.Id + (path.EndsWith(".bak", StringComparison.OrdinalIgnoreCase) ? ".json.bak" : ".json");
+            return string.Equals(Path.GetFileName(path), expected, StringComparison.OrdinalIgnoreCase) ? entry : null;
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return null; }
     }
     public async Task<QuarantineEntry> QuarantineAsync(string path, string expectedHash)
     {

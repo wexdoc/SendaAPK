@@ -36,6 +36,7 @@ public partial class BuildViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunBuildCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelBuildCommand))]
     private bool _isRunning;
 
     private bool _isConsolePreviewActive = true;
@@ -46,6 +47,8 @@ public partial class BuildViewModel : ObservableObject
     private readonly UbersignRunner _ubersignRunner;
     private readonly IDialogService _dialogService;
     private readonly IDispatcherService _dispatcherService;
+    private readonly OperationCoordinator _operations;
+    private OperationTicket? _activeBuild;
 
     public bool IsHintVisible => string.IsNullOrEmpty(ProjectPath);
 
@@ -57,7 +60,8 @@ public partial class BuildViewModel : ObservableObject
         ApktoolRunner apktoolRunner,
         UbersignRunner ubersignRunner,
         IDialogService dialogService,
-        IDispatcherService dispatcherService)
+        IDispatcherService dispatcherService,
+        OperationCoordinator? operations = null)
     {
         _filePickerService = filePickerService;
         _settingsService = settingsService;
@@ -65,6 +69,7 @@ public partial class BuildViewModel : ObservableObject
         _ubersignRunner = ubersignRunner;
         _dialogService = dialogService;
         _dispatcherService = dispatcherService;
+        _operations = operations ?? new OperationCoordinator(null);
         
         _consoleLog = Properties.Resources.WaitingForCommand;
 
@@ -177,35 +182,58 @@ public partial class BuildViewModel : ObservableObject
             return;
         }
 
-        SetConsoleLog(Properties.Resources.StartingApktool);
+        var projectPath = ProjectPath;
+        var outputApkPath = OutputApkPath;
+        var signApk = SignApk;
+        var useAapt2 = UseAapt2;
+        var publishedUnsigned = false;
+        var preserveTemporary = false;
+        SetConsoleLog("Esperando turno para compilar...");
         IsRunning = true;
-
-        var temporaryDirectory = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(OutputApkPath))!, ".pulseapk-" + Guid.NewGuid().ToString("N"));
+        using var ticket = _operations.Enqueue("Compilación · " + Path.GetFileName(projectPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)), request: new OperationRequestSnapshot
+        {
+            Kind = "build", InputPath = projectPath, OutputPath = outputApkPath, SignApk = signApk, UseAapt2 = useAapt2
+        });
+        _activeBuild = ticket;
+        CancelBuildCommand.NotifyCanExecuteChanged();
+        string? temporaryDirectory = null;
         try
         {
+            await ticket.WaitAsync();
+            ticket.Token.ThrowIfCancellationRequested();
+            if (File.Exists(outputApkPath) || (signApk && File.Exists(signedApkPath)))
+                throw new IOException("El archivo de salida ya existe. Elige otro nombre.");
+            ticket.Stage("Compilando APK");
+            temporaryDirectory = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outputApkPath))!, ".pulseapk-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temporaryDirectory);
-            var temporaryApk = Path.Combine(temporaryDirectory, Path.GetFileName(OutputApkPath));
-            var buildResult = await _apktoolRunner.RunBuildAsync(ProjectPath, temporaryApk, UseAapt2);
+            var temporaryApk = Path.Combine(temporaryDirectory, Path.GetFileName(outputApkPath));
+            var buildResult = await _apktoolRunner.RunBuildAsync(projectPath, temporaryApk, useAapt2, ticket.Token);
             var exitCode = buildResult.ExitCode;
 
             if (exitCode == 0)
             {
                 if (!File.Exists(temporaryApk)) throw new IOException("La herramienta no produjo el APK esperado.");
-                File.Move(temporaryApk, OutputApkPath, overwrite: false);
+                ticket.Token.ThrowIfCancellationRequested();
+                File.Move(temporaryApk, outputApkPath, overwrite: false);
+                publishedUnsigned = true;
                 AppendLog(Properties.Resources.BuildSuccessful);
 
-                if (SignApk && !string.IsNullOrWhiteSpace(signedApkPath))
+                if (signApk && !string.IsNullOrWhiteSpace(signedApkPath))
                 {
+                    ticket.Token.ThrowIfCancellationRequested();
+                    ticket.Stage("Firmando APK");
                     var temporarySigned = Path.Combine(temporaryDirectory, Path.GetFileName(signedApkPath));
-                    if (!await RunSigningAsync(OutputApkPath, temporarySigned))
+                    if (!await RunSigningAsync(outputApkPath, temporarySigned, ticket.Token))
                     {
                         await _dialogService.ShowErrorAsync("El APK se compiló, pero no se pudo firmar. Revisa el registro.");
                         return;
                     }
+                    ticket.Token.ThrowIfCancellationRequested();
                     File.Move(temporarySigned, signedApkPath, overwrite: false);
                     AppendLog("Firma terminada. La verificación independiente de la firma aún no está disponible.");
                 }
 
+                 ticket.Complete();
                  await _dialogService.ShowInfoAsync(Properties.Resources.BuildSuccessful);
             }
             else
@@ -213,6 +241,17 @@ public partial class BuildViewModel : ObservableObject
                  AppendLog($"{Properties.Resources.BuildFailed} (Exit Code: {exitCode})");
                  await _dialogService.ShowErrorAsync(Properties.Resources.BuildFailed);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            AppendLog(publishedUnsigned ? $"Operación cancelada. Se conservó el APK compilado sin firmar: {outputApkPath}" : "Compilación cancelada.");
+        }
+        catch (ProcessTerminationUnconfirmedException ex)
+        {
+            ticket.TerminationUnconfirmed();
+            preserveTemporary = true;
+            AppendLog($"{ex.Message} Carpeta temporal: {temporaryDirectory}");
+            await _dialogService.ShowErrorAsync(ex.Message);
         }
         catch (Exception ex)
         {
@@ -223,17 +262,34 @@ public partial class BuildViewModel : ObservableObject
         {
             try
             {
-                if (Directory.Exists(temporaryDirectory))
+                if (!preserveTemporary && temporaryDirectory is not null && Directory.Exists(temporaryDirectory))
                 {
-                    foreach (var file in Directory.EnumerateFiles(temporaryDirectory)) File.Delete(file);
+                    if ((File.GetAttributes(temporaryDirectory) & FileAttributes.ReparsePoint) != 0)
+                        throw new IOException("La carpeta temporal es un enlace; no se borrará automáticamente.");
+                    foreach (var file in Directory.EnumerateFiles(temporaryDirectory))
+                    {
+                        if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0)
+                            throw new IOException("La carpeta temporal contiene un enlace; no se borrará automáticamente.");
+                        File.Delete(file);
+                    }
                     Directory.Delete(temporaryDirectory, recursive: false);
                 }
             }
             catch (IOException) { AppendLog("No se pudieron borrar todos los archivos temporales."); }
             catch (UnauthorizedAccessException) { AppendLog("No se pudieron borrar todos los archivos temporales."); }
+            _activeBuild = null;
             IsRunning = false;
             RunBuildCommand.NotifyCanExecuteChanged();
         }
+    }
+
+    private bool CanCancelBuild() => IsRunning && _activeBuild?.CanCancel == true;
+    [RelayCommand(CanExecute = nameof(CanCancelBuild))]
+    private void CancelBuild()
+    {
+        _activeBuild?.Cancel();
+        CancelBuildCommand.NotifyCanExecuteChanged();
+        AppendLog("Cancelando; espera a que se detenga la herramienta.");
     }
 
     private void OnOutputDataReceived(string message)
@@ -388,13 +444,13 @@ public partial class BuildViewModel : ObservableObject
         return OutputFolderPath;
     }
 
-    private async Task<bool> RunSigningAsync(string inputApk, string signedApkPath)
+    private async Task<bool> RunSigningAsync(string inputApk, string signedApkPath, CancellationToken cancellationToken)
     {
         AppendLog($"Signing APK via ubersign to '{signedApkPath}'...");
 
         try
         {
-            var exitCode = await _ubersignRunner.RunSigningAsync(inputApk, signedApkPath);
+            var exitCode = await _ubersignRunner.RunSigningAsync(inputApk, signedApkPath, cancellationToken);
 
             if (exitCode == 0)
             {
@@ -407,6 +463,8 @@ public partial class BuildViewModel : ObservableObject
                 return false;
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (ProcessTerminationUnconfirmedException) { throw; }
         catch (Exception ex)
         {
             AppendLog($"Signing failed: {ex.Message}");

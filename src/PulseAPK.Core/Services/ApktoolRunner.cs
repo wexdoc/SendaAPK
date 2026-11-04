@@ -111,6 +111,7 @@ namespace PulseAPK.Core.Services
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 process.Start();
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
@@ -121,11 +122,7 @@ namespace PulseAPK.Core.Services
                 }
                 catch (OperationCanceledException)
                 {
-                    if (!process.HasExited)
-                    {
-                        process.Kill(entireProcessTree: true);
-                        await process.WaitForExitAsync();
-                    }
+                    await ProcessTermination.StopAfterCancellationAsync(process);
 
                     LogProcessCompletion(executableMode, process.HasExited ? process.ExitCode : null, canceled: true, stdoutLines, stderrLines);
                     throw;

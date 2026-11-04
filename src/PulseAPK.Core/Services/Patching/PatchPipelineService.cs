@@ -53,8 +53,16 @@ public sealed class PatchPipelineService : IPatchPipelineService
         _finalDexInspectionService = finalDexInspectionService;
     }
 
-    public async Task<PatchResult> RunAsync(PatchRequest request, CancellationToken cancellationToken = default)
+    public Task<PatchResult> RunAsync(PatchRequest request, CancellationToken cancellationToken = default)
+        => RunCoreAsync(request, cancellationToken, null);
+
+    public Task<PatchResult> RunAsync(PatchRequest request, CancellationToken cancellationToken, Action<string> progress)
+        => RunCoreAsync(request, cancellationToken, progress);
+
+    private async Task<PatchResult> RunCoreAsync(PatchRequest request, CancellationToken cancellationToken, Action<string>? progress)
     {
+        void Stage(string label) { cancellationToken.ThrowIfCancellationRequested(); progress?.Invoke(label); }
+        Stage("Validando opciones del parche");
         var result = new PatchResult();
         var validationErrors = _requestValidator.Validate(request);
         if (validationErrors.Count > 0)
@@ -64,6 +72,7 @@ public sealed class PatchPipelineService : IPatchPipelineService
             return result;
         }
 
+        Stage("Determinando arquitectura");
         var architectureResolution = await _architectureDetectionService.ResolveAsync(request, cancellationToken);
         if (architectureResolution.Warning is not null)
         {
@@ -84,11 +93,22 @@ public sealed class PatchPipelineService : IPatchPipelineService
         var jobDirectory = Directory.GetParent(decompiledDirectory)?.FullName ?? decompiledDirectory;
         var cleanupDirectory = !request.KeepIntermediateFiles ? jobDirectory : null;
 
+        string PublishPreservingOnFailure(string sourcePath, string destinationPath)
+        {
+            try { return PublishArtifactWithRetry(sourcePath, destinationPath); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                cleanupDirectory = null;
+                throw new IOException($"No se pudo publicar el APK. Se conservó la carpeta temporal {jobDirectory}: {ex.Message}", ex);
+            }
+        }
+
         var smaliInjectionApplied = false;
         var activitySmaliPatchApplied = false;
 
         try
         {
+            Stage("Descompilando APK");
             var decompileResult = await _apktoolService.DecompileAsync(request.InputApkPath, decompiledDirectory, request.DecodeResources, request.DecodeSources, cancellationToken);
             if (decompileResult.ExitCode != 0)
             {
@@ -100,6 +120,7 @@ public sealed class PatchPipelineService : IPatchPipelineService
 
             result.StageSummaries.Add(new PatchStageSummary("decompile", true, "APK decompiled successfully."));
 
+            Stage("Revisando actividad y manifiesto");
             var activityResult = await _activityDetectionService.DetectMainActivityAsync(decompiledDirectory, cancellationToken);
             if (activityResult.Warning is not null)
             {
@@ -117,6 +138,7 @@ public sealed class PatchPipelineService : IPatchPipelineService
             result.PatchedActivity = activityName;
             result.StageSummaries.Add(new PatchStageSummary("activity-detection", true, $"Selected activity '{activityName}'."));
 
+            Stage("Preparando cambios");
             var manifestPath = Path.Combine(decompiledDirectory, "AndroidManifest.xml");
             var manifestPatch = await _manifestPatchService.PatchAsync(manifestPath, request, cancellationToken);
             if (!manifestPatch.Success)
@@ -274,6 +296,7 @@ public sealed class PatchPipelineService : IPatchPipelineService
             }
 
             var rebuiltApkPath = Path.Combine(jobDirectory, "rebuilt.apk");
+            Stage("Compilando APK modificado");
             var initialBuildResult = await _apktoolService.BuildAsync(decompiledDirectory, rebuiltApkPath, request.UseAapt2ForBuild, cancellationToken);
             if (initialBuildResult.ExitCode == 0)
             {
@@ -312,6 +335,7 @@ public sealed class PatchPipelineService : IPatchPipelineService
 
             if (dexMode != DexPreservationMode.Disabled)
             {
+                Stage("Procesando archivos DEX");
                 if (dexMode == DexPreservationMode.ReplaceAllDexFiles && smaliInjectionApplied && !request.ConfirmDangerousDexReplacement)
                 {
                     const string dangerousModeError = "Dex replacement mode 'replace all dex' is blocked because smali injection was applied. Confirm dangerous mode explicitly to continue; replacing all dex may discard injected smali changes.";
@@ -344,10 +368,31 @@ public sealed class PatchPipelineService : IPatchPipelineService
             if (request.SignOutput)
             {
                 var signedPath = Path.Combine(jobDirectory, "signed.apk");
-                var signResult = await _signingService.SignAsync(rebuiltApkPath, signedPath, cancellationToken);
+                (bool Success, string? SignedApkPath, string? Error) signResult;
+                try
+                {
+                    Stage("Firmando APK");
+                    signResult = await _signingService.SignAsync(rebuiltApkPath, signedPath, cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    string message;
+                    try
+                    {
+                        var preserved = PublishArtifactWithRetry(rebuiltApkPath, request.OutputApkPath);
+                        message = $"Se conservó el APK compilado sin firmar: {preserved}";
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        cleanupDirectory = null;
+                        message = $"No se pudo publicar el APK; se conservó la carpeta temporal {jobDirectory}: {ex.Message}";
+                    }
+                    throw new OperationCanceledException(message, cancellationToken);
+                }
                 if (!signResult.Success)
                 {
-                    var publishedUnsignedPath = PublishArtifactWithRetry(rebuiltApkPath, request.OutputApkPath);
+                    var publishedUnsignedPath = PublishPreservingOnFailure(rebuiltApkPath, request.OutputApkPath);
                     result.Errors.Add(signResult.Error ?? "Signing failed.");
                     result.Warnings.Add("Unsigned rebuilt APK was preserved.");
                     result.StageSummaries.Add(new PatchStageSummary("signing", false, result.Errors.Last()));
@@ -369,6 +414,7 @@ public sealed class PatchPipelineService : IPatchPipelineService
             }
             else if (smaliInjectionApplied)
             {
+                Stage("Comprobando archivos DEX");
                 var classDescriptor = ToClassDescriptor(activityName);
                 const string rootBypassMarkerLiteral = "/dev/pulseapk-fake-root-";
                 var isRootBypassVerification = request.ScriptInjectionProfile == ScriptInjectionProfile.RootCheckPathBypass;
@@ -419,7 +465,8 @@ public sealed class PatchPipelineService : IPatchPipelineService
                         result.StageSummaries.Add(new PatchStageSummary("dex-verification", false, inspection.Diagnostics));
                     }
 
-                    result.OutputApkPath = PublishArtifactWithRetry(finalArtifactPath, finalOutputPath);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    result.OutputApkPath = PublishPreservingOnFailure(finalArtifactPath, finalOutputPath);
                     result.SelectedArchitecture = architecture;
                     result.UsedSigning = request.SignOutput;
                     return result;
@@ -431,11 +478,17 @@ public sealed class PatchPipelineService : IPatchPipelineService
                 result.StageSummaries.Add(new PatchStageSummary("dex-verification", true, successMessage));
             }
 
+            Stage("Publicando resultado");
             result.Success = true;
-            result.OutputApkPath = PublishArtifactWithRetry(finalArtifactPath, finalOutputPath);
+            result.OutputApkPath = PublishPreservingOnFailure(finalArtifactPath, finalOutputPath);
             result.SelectedArchitecture = architecture;
             result.UsedSigning = request.SignOutput;
             return result;
+        }
+        catch (ProcessTerminationUnconfirmedException ex)
+        {
+            cleanupDirectory = null;
+            throw new ProcessTerminationUnconfirmedException($"{ex.Message} Carpeta temporal conservada: {jobDirectory}", ex);
         }
         finally
         {

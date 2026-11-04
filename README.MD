@@ -6,7 +6,7 @@ Visita el [sitio web de SendaAPK](https://sendaapk.wexdoc.chatgpt.site/).
 
 **Estado:** el producto no tiene una versión estable. El análisis no instala ni ejecuta el APK. Los permisos, las URL y los indicios del código no demuestran infección; ningún resultado garantiza que el archivo sea seguro. Defender depende de la configuración del sistema y puede no estar disponible en modo privado. La cuarentena no desinfecta el contenido.
 
-En la última comprobación en Windows con .NET 10 pasaron 42 pruebas del analizador local y 116 de la batería general. Esas cifras son una instantánea, no una garantía de funcionamiento. La verificación de firmas, el análisis ampliado de Ren'Py, la coordinación global de operaciones y parte de la renovación de la interfaz están pendientes.
+El proyecto incluye pruebas automatizadas para el analizador local y otras funciones. La verificación independiente de firmas, el análisis ampliado de Ren'Py y parte de la renovación de la interfaz siguen pendientes.
 
 ## Desarrollar
 
@@ -23,7 +23,17 @@ Algunas funciones avanzadas requieren Java y herramientas externas configuradas 
 
 La cuarentena usa controles de bloqueo e identidad específicos de Windows y, por ahora, solo está disponible en ese sistema. Conserva una copia verificable y permite restaurarla sin sobrescribir un archivo existente; no modifica ni limpia el APK.
 
-Las operaciones principales permanecen visibles al cambiar de sección. Para evitar cierres accidentales, la ventana permanece abierta mientras hay tareas activas; el análisis local y la descompilación pueden cancelarse desde sus secciones. La descompilación requiere una carpeta de salida nueva.
+## Tareas y archivos
+
+El análisis, la descompilación, la compilación y el parcheo comparten una cola: solo una tarea pesada se ejecuta a la vez. La sección lateral muestra la tarea, la etapa y el tiempo, y conserva su estado al navegar. Puedes cancelar una tarea mientras espera o desde su sección mientras se ejecuta. Las descargas de herramientas también usan la cola.
+
+Al cerrar con tareas pendientes, puedes seguir trabajando o solicitar la cancelación y esperar hasta que sea seguro cerrar. Las transferencias de cuarentena y restauración que ya comenzaron continúan hasta alcanzar un estado recuperable. Si una tarea quedó interrumpida, revísala en la barra lateral y confirma sus opciones antes de repetirla; no se ejecuta automáticamente. Si no se puede confirmar que un proceso terminó, la cola se pausa para que puedas revisarlo antes de reanudarla. Cancelar una operación de Defender no garantiza que Windows haya detenido un análisis que ya inició.
+
+En Windows, una segunda instancia de esta versión solicita abrir el APK en la primera. La solicitud queda pendiente y no cambia el archivo de una tarea activa. Cierra cualquier versión anterior de SendaAPK antes de iniciar esta versión: las versiones sin coordinación de instancias no participan en este mecanismo.
+
+Las salidas se generan por separado y no deben reemplazar el original ni otros resultados existentes. La descompilación requiere una carpeta de salida nueva. Si se cancela durante la firma después de completar la compilación, se conserva el APK compilado sin firmar. La cuarentena mantiene metadatos de recuperación; si una restauración interrumpida deja ocupada la ruta original, revisa ambos archivos antes de volver a intentar restaurar, ya que no se sobrescribirá el archivo existente.
+
+La descarga integrada de Apktool aún no comprueba su integridad mediante una suma independiente ni fija una versión. Comprueba el origen y la integridad antes de utilizar la herramienta. Las herramientas existentes no se reemplazan automáticamente por una descarga.
 
 ## Sitio y patrocinio
 
